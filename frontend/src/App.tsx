@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, getToken } from './api/client'
 import { useMe, useProjectStats, useProjects } from './api/hooks'
 import { Icon, type IconName } from './components/Icon'
+import { Logo } from './components/Logo'
 import { Notifications } from './components/Notifications'
 import { Omnibox } from './components/Omnibox'
 import { Shortcuts } from './components/Shortcuts'
@@ -129,10 +130,10 @@ function Shell() {
   return (
     <div className="app">
       <header className="masthead">
-        <div className="brand">
-          <span className="logo"><Icon name="check-circle" size={15} /></span>
-          Test Yönetimi <small>DGPays</small>
-        </div>
+        <a className="brand" href={href({ page: 'dashboard' })}
+           title="Tüm projeler">
+          <Logo size={20} />
+        </a>
 
         <select className="project" value={route.project ?? ''}
                 onChange={(e) => go({

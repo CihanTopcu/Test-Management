@@ -10,7 +10,7 @@ from .org import Group, GroupMember, Project, ProjectMember, Role, User
 from .tokens import ApiToken
 from .workspace import (AuditEntry, Notification,
                         NotificationPreference, ReportSubscription,
-                        SavedFilter)
+                        SavedFilter, SyncRun)
 
 __all__ = [
     "ApiToken", "Attachment", "AuditEntry", "Base", "Case", "CaseHistory", "CaseLabel", "CaseStep",
@@ -19,6 +19,7 @@ __all__ = [
     "Priority", "Project", "ProjectMember", "Result", "ResultStep", "Role",
     "Notification", "NotificationPreference", "ReportSubscription",
     "Run", "SavedFilter",
-    "Section", "SharedStep", "Status", "Suite", "Template", "Test",
+    "Section", "SharedStep", "Status", "Suite", "SyncRun", "Template",
+    "Test",
     "User",
 ]

@@ -5,13 +5,14 @@ import {
 } from '../api/hooks'
 import { Dialog } from '../components/Dialog'
 import { AuditLog } from '../components/AuditLog'
+import { SyncStatus } from '../components/SyncStatus'
 import { ProjectAdmin } from '../components/ProjectAdmin'
 import { Icon } from '../components/Icon'
 import { Tokens } from './Tokens'
 import type { CustomField, UserAdmin } from '../api/types'
 
 type Tab = 'ozet' | 'projeler' | 'kullanicilar' | 'alanlar' | 'listeler'
-  | 'tokenlar' | 'denetim'
+  | 'tokenlar' | 'denetim' | 'esitleme'
 
 const FIELD_TYPES = [
   'string', 'integer', 'text', 'url', 'checkbox', 'dropdown', 'user', 'date',
@@ -287,7 +288,8 @@ export function Admin() {
            ['kullanicilar', 'Kullanıcılar ve Roller'],
            ['alanlar', 'Özel Alanlar'], ['listeler', 'Listeler'],
            ['tokenlar', 'API Tokenları'],
-           ['denetim', 'Denetim Kaydı']] as [Tab, string][])
+           ['denetim', 'Denetim Kaydı'],
+           ['esitleme', 'TestRail Eşitleme']] as [Tab, string][])
           .map(([key, label]) => (
             <button key={key} className={tab === key ? 'active' : ''}
                     onClick={() => setTab(key)}>{label}</button>
@@ -439,6 +441,8 @@ export function Admin() {
       {tab === 'tokenlar' && <Tokens />}
 
       {tab === 'denetim' && <AuditLog />}
+
+      {tab === 'esitleme' && <SyncStatus />}
 
       {editUser && <UserDialog user={editUser} onClose={() => setEditUser(null)} />}
       {editField && <FieldDialog field={editField} onClose={() => setEditField(null)} />}

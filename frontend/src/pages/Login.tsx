@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api } from '../api/client'
-import { Icon } from '../components/Icon'
+import { Logo } from '../components/Logo'
 
 const VERSION = 'v0.1.0'
 
@@ -29,14 +29,14 @@ export function Login({ onDone }: { onDone: () => void }) {
     <div className="signin">
       <div className="signin-inner">
         <div className="wordmark">
-          <span className="logo"><Icon name="check-circle" size={20} /></span>
-          Test Yönetimi
+          <Logo size={26} subtitle={false} />
         </div>
 
         <form className="signin-card" onSubmit={submit}>
-          <h1>DGPays Test Yönetimi</h1>
-          <h2>Hesabınıza giriş yapın</h2>
-          <div className="org">Dgpays</div>
+          {/* the name is already on the wordmark above; repeating it here
+              wastes the line that should say what to do next */}
+          <h1>Hesabınıza giriş yapın</h1>
+          <h2>DGPays test yönetim sistemi</h2>
 
           <label className="float">
             <input type="email" value={email} required autoFocus

@@ -60,6 +60,29 @@ services:
       db:
         condition: service_healthy
 
+  # Temporary: pulls TestRail changes while both systems are alive. Turn it
+  # off with TESTRAIL_SYNC_ENABLED=false once TestRail is shut down, or drop
+  # the service entirely -- nothing else depends on it.
+  sync:
+    build:
+      context: .
+      dockerfile: ./migration/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${DB_USER:-tm}:${DB_PASSWORD}@db:5432/${DB_NAME:-testmgmt}
+      TESTRAIL_URL: ${TESTRAIL_URL:-https://dgpaysit.testrail.com}
+      TESTRAIL_USER: ${TESTRAIL_USER:-}
+      TESTRAIL_KEY: ${TESTRAIL_KEY:-}
+      TESTRAIL_SYNC_ENABLED: ${TESTRAIL_SYNC_ENABLED:-false}
+      TESTRAIL_SYNC_INTERVAL: ${TESTRAIL_SYNC_INTERVAL:-604800}
+      TESTRAIL_SYNC_SINCE: ${TESTRAIL_SYNC_SINCE:-}
+    volumes:
+      # the dump tree it refreshes in place; the loader reads the same files
+      - ./data:/srv/data
+    depends_on:
+      db:
+        condition: service_healthy
+
   web:
     build:
       context: ./frontend

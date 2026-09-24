@@ -209,14 +209,8 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); }
   gap: 9px;
   white-space: nowrap;
 }
-.masthead .brand .logo {
-  width: 26px; height: 26px; border-radius: 7px;
-  background: linear-gradient(135deg, var(--accent), #8b5cf6);
-  display: grid; place-items: center; color: #fff;
-}
-.masthead .brand small {
-  color: var(--top-text); font-weight: 400; font-size: 11.5px; opacity: 0.85;
-}
+.masthead .brand { text-decoration: none; }
+.masthead .brand:hover .logotype .word { color: #fff; }
 .masthead .spacer { flex: 1; }
 .masthead .who { color: var(--top-text); font-size: 12.5px; white-space: nowrap; }
 .masthead button.ghost { color: var(--top-text); }
@@ -697,12 +691,7 @@ tbody tr:hover td.title { color: var(--accent); }
   color: #fff; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
   margin-bottom: 26px;
 }
-.wordmark .logo {
-  width: 36px; height: 36px; border-radius: 11px;
-  background: linear-gradient(135deg, var(--accent), #8b5cf6);
-  display: grid; place-items: center;
-  box-shadow: 0 6px 20px rgba(79, 70, 229, 0.45);
-}
+
 .signin-card {
   background: var(--surface); color: var(--text);
   border-radius: 16px; padding: 28px 30px 30px;
@@ -849,3 +838,22 @@ kbd {
   background: var(--surface-3);
 }
 .flakybar > span { display: block; height: 100%; }
+
+/* ---- brand -------------------------------------------------------------- */
+/* The mark is drawn in currentColor, so it takes the colour of whatever it
+   sits in: light on the masthead, accent on a white page. */
+.logotype {
+  display: inline-flex; align-items: baseline; gap: 8px;
+  color: var(--brand-on-dark, #a5a0ff);
+}
+.logotype svg { align-self: center; flex-shrink: 0; }
+.logotype .word {
+  font-weight: 640; letter-spacing: -0.02em; color: var(--top-strong, #fff);
+  line-height: 1;
+}
+.logotype small {
+  font-size: 11.5px; font-weight: 400; letter-spacing: 0;
+  color: var(--top-text); opacity: 0.85;
+}
+/* on the sign-in card the page is dark, so the mark keeps its light tone */
+.wordmark .logotype .word { color: #fff; }

@@ -1,15 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
-  ActivityItem, AdminSummary, Attachment, AuditPage, Catalog, CasePage,
-  AutomationBacklog, Coverage, DashboardOut, DuplicateGroup, FlakyCase,
-  NeverRunCase,
-  CustomField,
-  DefectReport, Distribution, HistoryEntry, Milestone, Project, ProjectMember,
-  ProjectStats,
-  DigestPreview, NotificationPreference, Result, RolesResponse, Run,
-  RunSummary, SectionNode, SeriesPoint, SubscriptionList, Suite, Test,
-  TestCase, TestDetail, TestPage, TodoItem, User, UserAdmin,
+  ActivityItem, AdminSummary, Attachment, AuditPage, AutomationBacklog,
+  CasePage, Catalog, Coverage, CustomField, DashboardOut, DefectReport,
+  DigestPreview, Distribution, DuplicateGroup, FlakyCase, HistoryEntry,
+  Milestone, NeverRunCase, NotificationPreference, Project, ProjectMember,
+  ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode,
+  SeriesPoint, SubscriptionList, Suite, SyncStatusOut, Test, TestCase,
+  TestDetail, TestPage, TodoItem, User, UserAdmin,
 } from './types'
 
 /** Lookup tables change about twice a year; keep them for the session. */
@@ -238,6 +236,14 @@ export const useAutomationBacklog = (projectId?: number) =>
       `/api/projects/${projectId}/reports/automation-backlog?limit=100`),
     enabled: !!projectId,
     staleTime: 5 * 60 * 1000,
+  })
+
+/** TestRail sync health; refreshed while the admin page is open. */
+export const useSyncStatus = () =>
+  useQuery({
+    queryKey: ['sync-status'],
+    queryFn: () => api.get<SyncStatusOut>('/api/admin/sync'),
+    refetchInterval: 60_000,
   })
 
 /* ---- personal settings --------------------------------------------------- */

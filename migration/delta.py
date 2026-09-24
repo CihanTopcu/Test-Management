@@ -60,55 +60,147 @@ def epoch(value: str) -> int:
     return int(dt.timestamp())
 
 
-def dump_delta(t: TestRail, since: int, only: int | None = None):
+def dump_delta(t: TestRail, since: int, only: int | None = None) -> dict:
+    """Refresh the dump for everything TestRail says changed since `since`.
+
+    Writes into the same layout dump.py produces, overwriting the files it
+    touches, so load.py picks the changes up without a second code path.
+
+    Returns a manifest naming exactly which suites and runs were rewritten,
+    so the load step can touch those and leave the other 13,000 run
+    directories alone.
+    """
     projects = json.load(open(os.path.join(RAW, "meta", "projects.json"),
                               encoding="utf-8"))
     if only:
         projects = [p for p in projects if p["id"] == only]
-    summary = {"cases": 0, "runs": 0, "results": 0, "milestones": 0}
+
+    manifest = {"suites": [], "runs": [], "projects": [],
+                "cases": 0, "runs_touched": 0, "results": 0, "milestones": 0}
 
     for p in projects:
         pid, pname = p["id"], p["name"]
+        touched_here = False
+
+        # --- cases: ask each suite whether anything moved ------------------
         suites = t.all(f"get_suites/{pid}", "suites")
+        save(f"projects/{pid}/suites.json", suites)
+        for suite in suites:
+            sid = suite["id"]
+            changed = t.all(
+                f"get_cases/{pid}&suite_id={sid}&updated_after={since}", "cases")
+            if not changed:
+                continue
+            # one changed case means the suite file is stale; re-fetch it
+            # whole rather than splicing rows into a JSON array
+            save(f"projects/{pid}/suite_{sid}/cases.json",
+                 t.all(f"get_cases/{pid}&suite_id={sid}", "cases"))
+            save(f"projects/{pid}/suite_{sid}/sections.json",
+                 t.all(f"get_sections/{pid}&suite_id={sid}", "sections"))
+            manifest["suites"].append(sid)
+            manifest["cases"] += len(changed)
+            touched_here = True
 
-        changed_cases = []
-        for s in suites:
-            rows = t.all(
-                f"get_cases/{pid}&suite_id={s['id']}&updated_after={since}",
-                "cases")
-            changed_cases += rows
-        if changed_cases:
-            save(f"delta/{pid}/cases.json", changed_cases)
-
-        runs = t.all(f"get_runs/{pid}&created_after={since}", "runs")
-        if runs:
-            save(f"delta/{pid}/runs.json", runs)
-
-        results = 0
-        # results land in runs that may themselves predate the window, so
-        # every run the project knows about has to be asked
-        for run in t.all(f"get_runs/{pid}", "runs"):
-            rows = t.all(f"get_results_for_run/{run['id']}&created_after={since}",
-                         "results")
-            if rows:
-                save(f"delta/{pid}/results_{run['id']}.json", rows)
-                results += len(rows)
-
+        # --- milestones and plans: small, always refreshed -----------------
         milestones = t.all(f"get_milestones/{pid}", "milestones")
-        save(f"delta/{pid}/milestones.json", milestones)
+        save(f"projects/{pid}/milestones.json", milestones)
+        for m in milestones:
+            save(f"projects/{pid}/milestone_{m['id']}.json",
+                 t.get(f"get_milestone/{m['id']}"))
+        manifest["milestones"] += len(milestones)
 
-        summary["cases"] += len(changed_cases)
-        summary["runs"] += len(runs)
-        summary["results"] += results
-        summary["milestones"] += len(milestones)
-        if changed_cases or runs or results:
-            log(f"  {pname[:30]:<32} case={len(changed_cases):<5} "
-                f"run={len(runs):<4} sonuc={results}")
+        plans = t.all(f"get_plans/{pid}", "plans")
+        save(f"projects/{pid}/plans.json", plans)
+        for plan in plans:
+            save(f"projects/{pid}/plan_{plan['id']}.json",
+                 t.get(f"get_plan/{plan['id']}"))
 
-    save("delta/summary.json", {**summary, "since": since,
-                                "taken_at": datetime.now(timezone.utc).isoformat()})
-    log(f"DELTA: {summary}")
-    return summary
+        # --- runs ----------------------------------------------------------
+        runs = t.all(f"get_runs/{pid}", "runs")
+        save(f"projects/{pid}/runs.json", runs)
+        known = set(runs_on_disk(pid))
+
+        for run in runs:
+            rid = run["id"]
+            fresh = rid not in known
+            if fresh:
+                new_results = None          # a new run: take everything
+            else:
+                # An archived run is read-only in TestRail, so it cannot have
+                # gained anything; skipping those is what keeps a weekly pass
+                # to minutes instead of hours.
+                if run.get("is_archived"):
+                    continue
+                new_results = t.all(
+                    f"get_results_for_run/{rid}&created_after={since}",
+                    "results")
+                if not new_results:
+                    continue
+
+            tests = t.all(f"get_tests/{rid}", "tests")
+            results = t.all(f"get_results_for_run/{rid}", "results")
+            save(f"projects/{pid}/run_{rid}/tests.json", tests)
+            save(f"projects/{pid}/run_{rid}/results.json", results)
+            manifest["runs"].append(rid)
+            manifest["runs_touched"] += 1
+            manifest["results"] += len(new_results) if new_results else len(results)
+            touched_here = True
+
+        if touched_here:
+            manifest["projects"].append(pid)
+            log(f"  {pname[:30]:<32} suite={len([x for x in manifest['suites']]):<4} "
+                f"kosum={manifest['runs_touched']:<5} sonuc={manifest['results']}")
+
+    manifest["since"] = since
+    manifest["taken_at"] = datetime.now(timezone.utc).isoformat()
+    save("delta/manifest.json", manifest)
+    log(f"DELTA: case={manifest['cases']} kosum={manifest['runs_touched']} "
+        f"sonuc={manifest['results']}")
+    return manifest
+
+
+def runs_on_disk(pid: int) -> list[int]:
+    """Run directories already in the dump, so new ones can be spotted."""
+    pdir = os.path.join(RAW, "projects", str(pid))
+    if not os.path.isdir(pdir):
+        return []
+    return [int(d.split("_")[1]) for d in os.listdir(pdir)
+            if d.startswith("run_")]
+
+
+def load_delta(manifest: dict | None = None) -> dict:
+    """Load exactly what the delta touched.
+
+    The full loader walks 13,929 run directories and upserts 1.09M results,
+    which took the best part of an hour on the initial import. A weekly sync
+    that only changed four runs has no business doing that, so the phases
+    are handed the manifest and skip everything else.
+    """
+    if manifest is None:
+        with open(os.path.join(RAW, "delta", "manifest.json"),
+                  encoding="utf-8") as f:
+            manifest = json.load(f)
+
+    import load as loader
+
+    url = os.environ.get("DATABASE_URL") or get_settings().database_url
+    engine = create_engine(url, future=True)
+    from sqlalchemy.orm import Session as _Session
+
+    with _Session(engine) as session:
+        loader.load_catalog(session)
+        loader.load_custom_fields(session)
+        loader.load_projects(session)
+        loader.load_milestones(session)
+        structure = loader.load_structure(
+            session, only_suites=set(manifest.get("suites") or []))
+        execution = loader.load_execution(
+            session, only_runs=set(manifest.get("runs") or []))
+        loader.fix_sequences(session)
+
+    return {"loaded_cases": structure.get("cases", 0),
+            "loaded_tests": execution.get("tests", 0),
+            "loaded_results": execution.get("results", 0)}
 
 
 def report(t: TestRail):

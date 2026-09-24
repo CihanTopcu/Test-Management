@@ -169,6 +169,25 @@ export interface AutomationBacklog {
            last_run: string | null }[]
 }
 
+export interface SyncRun {
+  id: number
+  started_on: string
+  finished_on: string | null
+  status: string
+  window_from: string | null
+  trigger: string
+  counts: Record<string, unknown>
+  error: string | null
+}
+
+export interface SyncStatusOut {
+  enabled: boolean
+  interval_hours: number
+  overdue: boolean | null
+  last_ok: string | null
+  runs: SyncRun[]
+}
+
 export interface AuditEntry {
   id: number
   created_on: string

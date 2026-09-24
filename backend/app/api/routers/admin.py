@@ -5,6 +5,7 @@ check here is deliberately simple -- the role named Admin can administer --
 because a finer permission model is a decision for the team, not something to
 invent while porting data.
 """
+import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import (APIRouter, Depends, HTTPException, Query, Request,
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 from ...audit import record
 from ...db import get_session
 from ...models import (AuditEntry, CaseType, CustomField, CustomFieldOption,
-                       Priority, Project, Role, Status, User)
+                       Priority, Project, Role, Status, SyncRun, User)
 from ...security import hash_password
 from ..deps import current_user
 from ..permissions import ALL as ALL_CAPABILITIES
@@ -317,4 +318,52 @@ def audit_log(action: str | None = None,
             "project_name": projects.get(r.project_id),
             "detail": r.detail, "ip": r.ip,
         } for r in rows],
+    }
+
+
+@router.get("/sync")
+def sync_status(session: Session = Depends(get_session),
+                _: User = Depends(require_admin)):
+    """What the TestRail sync has been doing.
+
+    A job nobody can see is a job nobody notices has stopped, which during a
+    cut-over is the worst possible failure: both systems drift apart quietly
+    and it only surfaces when TestRail is already gone. So the last runs are
+    on the admin page, and a sync that is overdue says so.
+    """
+    runs = session.scalars(
+        select(SyncRun).order_by(SyncRun.started_on.desc()).limit(20)).all()
+    last_ok = session.scalar(
+        select(SyncRun).where(SyncRun.status == "ok")
+        .order_by(SyncRun.finished_on.desc()).limit(1))
+
+    now = datetime.now(timezone.utc)
+    interval = int(os.environ.get("TESTRAIL_SYNC_INTERVAL", 7 * 24 * 3600))
+    enabled = os.environ.get("TESTRAIL_SYNC_ENABLED", "false").lower() not in (
+        "0", "false", "no", "off", "")
+
+    overdue = None
+    if enabled and last_ok is not None and last_ok.finished_on is not None:
+        finished = last_ok.finished_on
+        if finished.tzinfo is None:
+            finished = finished.replace(tzinfo=timezone.utc)
+        # one interval is normal, two means something stopped
+        elapsed = (now - finished).total_seconds()
+        overdue = elapsed > interval * 2
+
+    return {
+        "enabled": enabled,
+        "interval_hours": round(interval / 3600),
+        "overdue": overdue,
+        "last_ok": last_ok.finished_on if last_ok else None,
+        "runs": [{
+            "id": r.id,
+            "started_on": r.started_on,
+            "finished_on": r.finished_on,
+            "status": r.status,
+            "window_from": r.window_from,
+            "trigger": r.trigger,
+            "counts": r.counts or {},
+            "error": r.error,
+        } for r in runs],
     }

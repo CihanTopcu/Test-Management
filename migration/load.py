@@ -313,7 +313,12 @@ def load_milestones(session):
 
 # --- phase 2: the case library ---------------------------------------------
 
-def load_structure(session):
+def load_structure(session, only_suites: set[int] | None = None):
+    """Load suites, sections and cases.
+
+    `only_suites` narrows the pass to the suites a sync refreshed; None means
+    everything, which is what the initial import wants.
+    """
     log("== suite / section / case ==")
     totals = {"suites": 0, "sections": 0, "cases": 0, "steps": 0, "labels": 0}
     label_ids = {}
@@ -330,6 +335,8 @@ def load_structure(session):
             for s in suites])
 
         for sid in suites_on_disk(pid):
+            if only_suites is not None and sid not in only_suites:
+                continue
             sections = read(f"projects/{pid}/suite_{sid}/sections.json")
             # parent_id is filled in a second pass so ordering never matters
             parents = {}
@@ -430,6 +437,7 @@ def load_structure(session):
     if shared:
         log(f"  shared_steps     {upsert(session, models.SharedStep, shared)}")
     log(f"  toplam {totals}")
+    return totals
 
 
 def _attach_labels(session, label_ids, case_labels):
@@ -459,7 +467,14 @@ def _attach_labels(session, label_ids, case_labels):
 
 # --- phase 3: execution -----------------------------------------------------
 
-def load_execution(session):
+def load_execution(session, only_runs: set[int] | None = None):
+    """Load plans, runs, tests and results.
+
+    `only_runs` narrows the per-run work to the runs a sync refreshed. Plans
+    and run metadata are still read whole: they are one file per project and
+    a run's own row may have changed (completed, renamed) without any new
+    result landing in it.
+    """
     log("== plan / run / test / result ==")
     totals = {"plans": 0, "entries": 0, "runs": 0, "tests": 0,
               "results": 0, "steps": 0}
@@ -550,7 +565,10 @@ def load_execution(session):
             add_run(r)
         totals["runs"] += upsert(session, models.Run, run_rows)
 
-        for rid in runs_on_disk(pid):
+        wanted = runs_on_disk(pid)
+        if only_runs is not None:
+            wanted = [r for r in wanted if r in only_runs]
+        for rid in wanted:
             tests = read(f"projects/{pid}/run_{rid}/tests.json")
             known_tests = {t["id"] for t in tests}
             totals["tests"] += upsert(session, models.Test, [
@@ -616,6 +634,7 @@ def load_execution(session):
 
         log(f"  p{pid:<3} ok  {totals}")
     log(f"  toplam {totals}")
+    return totals
 
 
 def load_attachments(session):

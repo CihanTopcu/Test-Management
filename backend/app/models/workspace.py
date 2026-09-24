@@ -137,3 +137,35 @@ class ReportSubscription(Base, TimestampMixin):
     # what the window is measured from, and the guard against double sends
     last_sent_on: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True))
+
+
+class SyncRun(Base):
+    """One attempt at pulling changes from TestRail.
+
+    Kept as history rather than a single "last synced" field, because the
+    question people actually ask during a cut-over is "did last night's sync
+    work, and what came in", and a lone timestamp cannot answer it.
+
+    The window start is stored per run: it only moves forward when a run
+    succeeds, so a failed week is re-covered by the next one instead of
+    quietly falling through the gap.
+    """
+    __tablename__ = "sync_runs"
+    __table_args__ = (Index("ix_sync_started", "started_on"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    started_on: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False)
+    finished_on: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True))
+    # running | ok | failed
+    status: Mapped[str] = mapped_column(String(10), nullable=False,
+                                        default="running")
+    # the moment this run asked TestRail to report changes from
+    window_from: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True))
+    # schedule | manual
+    trigger: Mapped[str] = mapped_column(String(10), nullable=False,
+                                         default="schedule")
+    counts: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text)
