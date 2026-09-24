@@ -159,6 +159,16 @@ export interface NeverRunCase {
   created_on: string | null
 }
 
+export interface AutomationBacklog {
+  configured: boolean
+  field_label?: string
+  detail?: string
+  by_status: { value: string | null; label: string; count: number
+               is_manual: boolean }[]
+  items: { case_id: number; title: string; status: string; runs: number
+           last_run: string | null }[]
+}
+
 export interface AuditEntry {
   id: number
   created_on: string

@@ -18,9 +18,8 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import Session
 
 from ...db import get_session
-from ...models import (Case, CaseType, Priority, Result, Run, Section, Suite,
-                       Test,
-                       User)
+from ...models import (Case, CaseType, CustomField, CustomFieldOption,
+                       Priority, Result, Run, Section, Suite, Test, User)
 from ..deps import current_user
 from ..schemas import DistributionOut, SeriesPoint
 
@@ -259,3 +258,92 @@ def never_run(project_id: int, offset: int = 0,
                    "section_name": names.get(sid, "?"), "created_on": created}
                   for cid, title, sid, created in rows],
     }
+
+
+# The team already keeps this backlog in a custom field; these are the values
+# that mean "somebody still runs this by hand".
+MANUAL_LABELS = {"ready to automation", "non-automated", "manuel test",
+                 "not done", "partial automation"}
+
+
+@router.get("/automation-backlog")
+def automation_backlog(project_id: int, limit: int = Query(50, le=200),
+                       session: Session = Depends(get_session),
+                       _: User = Depends(current_user)):
+    """Cases still run by hand, most-executed first.
+
+    The team already tracks this in the IsAutomated field -- 2,544 cases sit
+    at "Ready to Automation". What the field cannot tell them is which ones
+    to do first, and the answer is in the execution history: automating the
+    case somebody has run 109 times pays back immediately, the one run twice
+    does not.
+    """
+    field = session.scalar(
+        select(CustomField).where(CustomField.entity == "case",
+                                  CustomField.system_name.in_(
+                                      ["custom_automation_type",
+                                       "custom_isautomated"])))
+    if field is None:
+        return {"configured": False, "by_status": [], "items": [],
+                "detail": "Bu instance'ta otomasyon durumu alanı tanımlı değil."}
+
+    options = session.execute(
+        select(CustomFieldOption.value, CustomFieldOption.label)
+        .where(CustomFieldOption.field_id == field.id)).all()
+    labels = {str(value): label for value, label in options}
+    manual_values = [v for v, label in labels.items()
+                     if label.strip().lower() in MANUAL_LABELS]
+
+    suite_ids = select(Suite.id).where(
+        Suite.project_id == project_id).scalar_subquery()
+    value = Case.custom[field.system_name].astext
+
+    spread = session.execute(
+        select(value, func.count())
+        .where(Case.suite_id.in_(suite_ids), Case.is_deleted.is_(False))
+        .group_by(value).order_by(func.count().desc())).all()
+
+    by_status = [{
+        "value": raw,
+        "label": labels.get(raw, "(belirtilmemiş)" if raw is None else f"#{raw}"),
+        "count": count,
+        "is_manual": raw in manual_values,
+    } for raw, count in spread]
+
+    if not manual_values:
+        return {"configured": True, "by_status": by_status, "items": [],
+                "detail": "Bu projede elle koşulan olarak işaretli case yok."}
+
+    runs = func.count(Test.id)
+    rows = session.execute(
+        select(Case.id, Case.title, value, runs, func.max(Result.created_on))
+        .select_from(Case)
+        .join(Test, Test.case_id == Case.id)
+        .outerjoin(Result, Result.test_id == Test.id)
+        .where(Case.suite_id.in_(suite_ids), Case.is_deleted.is_(False),
+               value.in_(manual_values))
+        .group_by(Case.id, Case.title, value)
+        .order_by(runs.desc())
+        .limit(limit)).all()
+
+    items = [{"case_id": cid, "title": title,
+              "status": labels.get(raw, raw), "runs": n, "last_run": last}
+             for cid, title, raw, n, last in rows]
+    payload = {
+        "configured": True,
+        "field_label": field.label,
+        "by_status": by_status,
+        "items": items,
+    }
+    if not items:
+        # An empty table with no explanation reads like a broken report.
+        # Two different nothings land here: nothing marked manual at all, and
+        # manual cases that have simply never been run -- the ranking is by
+        # execution count, so those cannot appear.
+        marked = sum(s["count"] for s in by_status if s["is_manual"])
+        payload["detail"] = (
+            f"{marked} case elle koşulan olarak işaretli ama hiçbiri bir"
+            " koşuma girmemiş; bu liste koşum sayısına göre sıralanıyor."
+            if marked else
+            "Bu projede elle koşulan olarak işaretli case yok.")
+    return payload

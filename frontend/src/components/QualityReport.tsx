@@ -1,25 +1,28 @@
 import { useState } from 'react'
 import {
-  useDuplicateCases, useFlakyTests, useNeverRunCases,
+  useAutomationBacklog, useDuplicateCases, useFlakyTests, useNeverRunCases,
 } from '../api/hooks'
 import { Icon } from '../components/Icon'
 import { href } from '../route'
 
 /**
- * The three things the migrated data says about the case library itself.
+ * What the migrated data says about the case library itself.
  *
- * Not invented report templates: each of these came out of auditing what was
+ * Not invented report templates: each tab came out of auditing what was
  * imported. A test that both passes and fails teaches people to re-run
  * rather than read; a case duplicated in its own folder is executed twice
- * every regression; a case nobody has ever run is a case nobody maintains.
+ * every regression; a case nobody has ever run is a case nobody maintains;
+ * and the automation backlog the team already keeps had no way to say which
+ * item to pick up first.
  */
 
-type Tab = 'flaky' | 'duplicates' | 'never'
+type Tab = 'flaky' | 'duplicates' | 'never' | 'automation'
 
 const TABS: [Tab, string][] = [
   ['flaky', 'Kararsız testler'],
   ['duplicates', 'Yinelenen başlıklar'],
   ['never', 'Hiç koşulmamış'],
+  ['automation', 'Otomasyon adayları'],
 ]
 
 function fmtDate(value: string | null) {
@@ -34,6 +37,13 @@ export function QualityReport({ projectId }: { projectId?: number }) {
   const flaky = useFlakyTests(projectId, tab === 'flaky' ? days : 0)
   const duplicates = useDuplicateCases(tab === 'duplicates' ? projectId : undefined)
   const neverRun = useNeverRunCases(tab === 'never' ? projectId : undefined)
+  const backlog = useAutomationBacklog(
+    tab === 'automation' ? projectId : undefined)
+
+  // the table ranks by run count, so it can only hold cases that have run
+  const manualTotal = (backlog.data?.by_status ?? [])
+    .filter((s) => s.is_manual)
+    .reduce((n, s) => n + s.count, 0)
 
   return (
     <>
@@ -162,6 +172,78 @@ export function QualityReport({ projectId }: { projectId?: number }) {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === 'automation' && (
+        <>
+          <div className="toolbar">
+            <span className="faint small grow">
+              Hâlâ elle koşulan case’ler, en çok koşulan başta — çünkü 48 kez
+              koşulan bir case’i otomatize etmek hemen geri öder, iki kez
+              koşulan ödemez. Alan değerleri ekibin kendi
+              “{backlog.data?.field_label ?? 'IsAutomated'}” alanından okunuyor.
+            </span>
+          </div>
+
+          {backlog.data && backlog.data.by_status.length > 0 && (
+            <div className="chiprow" style={{ marginBottom: 12 }}>
+              {backlog.data.by_status.slice(0, 8).map((s) => (
+                <span key={s.label}
+                      className={`badge ${s.is_manual ? '' : 'soft'}`}
+                      style={s.is_manual
+                        ? { background: 'var(--warn)' } : undefined}>
+                  {s.label}: {s.count.toLocaleString('tr-TR')}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {!backlog.data?.items.length ? (
+            <div className="panel empty">
+              <b>Aday yok</b>
+              {backlog.data?.detail
+                ?? 'Bu projede elle koşulan olarak işaretli case bulunmuyor.'}
+            </div>
+          ) : (
+            <div className="panel" style={{ overflow: 'auto' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: 90 }}>Case</th>
+                    <th>Başlık</th>
+                    <th style={{ width: 190 }}>Durum</th>
+                    <th style={{ width: 110, textAlign: 'right' }}>Koşum</th>
+                    <th style={{ width: 120 }}>Son koşum</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {backlog.data.items.map((c) => (
+                    <tr key={c.case_id} onClick={() => {
+                      location.hash = href({ page: 'cases', project: projectId,
+                                             case: c.case_id })
+                    }}>
+                      <td className="cid">C{c.case_id}</td>
+                      <td className="title">{c.title}</td>
+                      <td className="small muted">{c.status}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <b>{c.runs.toLocaleString('tr-TR')}</b>
+                      </td>
+                      <td className="small muted">{fmtDate(c.last_run)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {manualTotal > backlog.data.items.length && (
+                <div className="faint small" style={{ padding: 10 }}>
+                  Elle koşulan olarak işaretli {manualTotal.toLocaleString('tr-TR')}{' '}
+                  case’in {backlog.data.items.length} tanesi en az bir kez
+                  koşulmuş; sıralama koşum sayısına göre olduğu için yalnızca
+                  onlar listeleniyor. Kalanlar “Hiç koşulmamış” sekmesinde.
+                </div>
+              )}
             </div>
           )}
         </>

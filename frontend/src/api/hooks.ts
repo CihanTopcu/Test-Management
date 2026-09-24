@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
   ActivityItem, AdminSummary, Attachment, AuditPage, Catalog, CasePage,
-  Coverage, DashboardOut, DuplicateGroup, FlakyCase, NeverRunCase,
+  AutomationBacklog, Coverage, DashboardOut, DuplicateGroup, FlakyCase,
+  NeverRunCase,
   CustomField,
   DefectReport, Distribution, HistoryEntry, Milestone, Project, ProjectMember,
   ProjectStats,
@@ -226,6 +227,15 @@ export const useNeverRunCases = (projectId?: number) =>
     queryFn: () => api.get<{
       total: number; offset: number; limit: number; items: NeverRunCase[]
     }>(`/api/projects/${projectId}/reports/never-run?limit=100`),
+    enabled: !!projectId,
+    staleTime: 5 * 60 * 1000,
+  })
+
+export const useAutomationBacklog = (projectId?: number) =>
+  useQuery({
+    queryKey: ['automation-backlog', projectId],
+    queryFn: () => api.get<AutomationBacklog>(
+      `/api/projects/${projectId}/reports/automation-backlog?limit=100`),
     enabled: !!projectId,
     staleTime: 5 * 60 * 1000,
   })

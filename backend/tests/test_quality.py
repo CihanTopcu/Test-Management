@@ -158,3 +158,86 @@ def test_a_deleted_case_is_not_reported_as_unrun(app_client, admin, project,
 
     report = app_client.get(url(project, "never-run"), headers=admin).json()
     assert report["total"] == 0
+
+
+def _automation_field(app_client, admin):
+    """The team's own IsAutomated field, created the way an admin would."""
+    created = app_client.post("/api/admin/fields", headers=admin, json={
+        "entity": "case", "system_name": "custom_automation_type",
+        "label": "IsAutomated", "field_type": "dropdown", "is_global": True,
+        "options": [{"value": 2, "label": "Automated"},
+                    {"value": 8, "label": "Non-Automated"},
+                    {"value": 11, "label": "Ready to Automation"}],
+    })
+    assert created.status_code in (201, 400), created.text
+
+
+def test_automation_backlog_ranks_by_how_often_it_is_run(
+        app_client, admin, project, suite, make_case):
+    _automation_field(app_client, admin)
+    rare = make_case("Nadiren koşulan", custom={"custom_automation_type": 11})
+    often = make_case("Sık koşulan", custom={"custom_automation_type": 11})
+    make_case("Zaten otomatik", custom={"custom_automation_type": 2})
+
+    # three runs for everything, then two more that hold only the busy case
+    _run_with(app_client, admin, project, suite, "Tam koşum")
+    for i in range(2):
+        response = app_client.post(f"/api/projects/{project['id']}/runs",
+                                   headers=admin, json={
+                                       "suite_id": suite["id"],
+                                       "name": f"Dar koşum {i}",
+                                       "include_all": False,
+                                       "case_ids": [often["id"]]})
+        assert response.status_code == 201, response.text
+
+    report = app_client.get(url(project, "automation-backlog"),
+                            headers=admin).json()
+    assert report["configured"] is True
+    assert report["field_label"] == "IsAutomated"
+
+    titles = [i["title"] for i in report["items"]]
+    assert titles[0] == "Sık koşulan", "en cok kosulan basta olmali"
+    assert "Zaten otomatik" not in titles, "otomatize olanlar listede olmamali"
+    assert report["items"][0]["runs"] == 3
+    assert report["items"][0]["status"] == "Ready to Automation"
+
+    # the rarely-run one is still there, just lower
+    assert rare["id"] in [i["case_id"] for i in report["items"]]
+
+
+def test_the_status_spread_marks_which_values_mean_manual(
+        app_client, admin, project, suite, make_case):
+    _automation_field(app_client, admin)
+    make_case("Otomatik", custom={"custom_automation_type": 2})
+    make_case("Elle", custom={"custom_automation_type": 8})
+
+    report = app_client.get(url(project, "automation-backlog"),
+                            headers=admin).json()
+    spread = {s["label"]: s for s in report["by_status"]}
+    assert spread["Automated"]["is_manual"] is False
+    assert spread["Non-Automated"]["is_manual"] is True
+
+
+def test_a_project_with_nothing_manual_says_so(app_client, admin, project,
+                                               suite, make_case):
+    """An empty table with no explanation reads like a broken report."""
+    _automation_field(app_client, admin)
+    make_case("Hepsi otomatik", custom={"custom_automation_type": 2})
+
+    report = app_client.get(url(project, "automation-backlog"),
+                            headers=admin).json()
+    assert report["items"] == []
+    assert "elle koşulan olarak işaretli case yok" in report["detail"]
+
+
+def test_manual_cases_that_never_ran_are_explained_not_hidden(
+        app_client, admin, project, suite, make_case):
+    """The ranking is by run count, so an unrun case cannot be in the table.
+    Saying nothing would look like the report had failed."""
+    _automation_field(app_client, admin)
+    make_case("Elle ama hic kosulmamis", custom={"custom_automation_type": 8})
+
+    report = app_client.get(url(project, "automation-backlog"),
+                            headers=admin).json()
+    assert report["items"] == []
+    assert "hiçbiri bir koşuma girmemiş" in report["detail"]
