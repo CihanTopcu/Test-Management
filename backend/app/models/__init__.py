@@ -9,14 +9,16 @@ from .execution import (Config, ConfigGroup, Milestone, Plan, PlanEntry,
 from .org import Group, GroupMember, Project, ProjectMember, Role, User
 from .tokens import ApiToken
 from .workspace import (AuditEntry, Notification,
-                        NotificationPreference, SavedFilter)
+                        NotificationPreference, ReportSubscription,
+                        SavedFilter)
 
 __all__ = [
     "ApiToken", "Attachment", "AuditEntry", "Base", "Case", "CaseHistory", "CaseLabel", "CaseStep",
     "CaseType", "Config", "ConfigGroup", "CustomField", "CustomFieldOption",
     "Group", "GroupMember", "Label", "Milestone", "Plan", "PlanEntry",
     "Priority", "Project", "ProjectMember", "Result", "ResultStep", "Role",
-    "Notification", "NotificationPreference", "Run", "SavedFilter",
+    "Notification", "NotificationPreference", "ReportSubscription",
+    "Run", "SavedFilter",
     "Section", "SharedStep", "Status", "Suite", "Template", "Test",
     "User",
 ]

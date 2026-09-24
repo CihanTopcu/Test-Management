@@ -99,6 +99,39 @@ export interface DashboardOut {
   projects: DashboardProject[]
 }
 
+export interface NotificationPreference {
+  kind: string
+  label: string
+  in_app: boolean
+  email: boolean
+}
+
+export interface ReportSubscription {
+  id: number
+  project_id: number | null
+  project_name: string
+  kind: string
+  kind_label: string
+  frequency: string
+  hour: number
+  weekday: number
+  by_email: boolean
+  is_active: boolean
+  last_sent_on: string | null
+}
+
+export interface SubscriptionList {
+  kinds: { key: string; label: string }[]
+  items: ReportSubscription[]
+}
+
+export interface DigestPreview {
+  empty: boolean
+  subject?: string
+  body?: string
+  detail?: string
+}
+
 export interface AuditEntry {
   id: number
   created_on: string

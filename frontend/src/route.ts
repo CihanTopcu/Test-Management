@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from 'react'
  */
 export type Page = 'overview' | 'todo' | 'suites' | 'cases' | 'runs'
   | 'plans' | 'milestones' | 'shared' | 'reports' | 'admin' | 'dashboard'
+  | 'settings'
 
 export interface Route {
   page: Page
@@ -31,7 +32,7 @@ export interface Route {
 
 const PAGES: Page[] = ['overview', 'todo', 'suites', 'cases', 'runs',
                        'plans', 'milestones', 'shared', 'reports', 'admin',
-                       'dashboard']
+                       'dashboard', 'settings']
 
 function parse(): Route {
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean)

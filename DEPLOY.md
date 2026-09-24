@@ -197,7 +197,25 @@ cd backend && python -m pytest
 
 Ayrıntılar ve testlerin bulduğu ilk hatalar: `backend/tests/README.md`.
 
-## 9. İstek sınırı
+## 9. Zamanlanmış raporlar
+
+Kullanıcılar kendi ayar ekranından (sağ üstte adlarına tıklayarak) rapor
+aboneliği açar: gece kırılan testler, proje özeti, yaklaşan milestone'lar.
+Teslimatı uygulama kendi başına yapmaz; e-posta kuyruğunu boşaltan aynı
+zamanlayıcı bu ucu da çağırmalı:
+
+```
+*/15 * * * *  curl -s -X POST -H "Authorization: Bearer <admin tokeni>"               http://localhost:8080/api/report-subscriptions/dispatch
+```
+
+On beş dakikada bir çağırmak güvenli: her abonelik günde en fazla bir kez
+gönderilir. Sık çağırmanın faydası, seçilen saatte konteyner kapalıysa günü
+atlamak yerine açılır açılmaz göndermesidir.
+
+İçinde bildirilecek bir şey olmayan rapor gönderilmez — pencere yine ilerler,
+yani bir sonraki rapor kimseye söylenmemiş bir dönemi tekrar taramaz.
+
+## 10. İstek sınırı
 
 Giriş denemeleri (dakikada 10) ve otomasyon yazmaları (dakikada 600 sonuç)
 sınırlıdır. Sayaç bellekte, süreç başına tutulur; bu kurulum tek API
@@ -206,7 +224,7 @@ konteyneri çalıştırdığı için tablo bütünüyle budur. Birden fazla iş�
 
 `RATE_LIMIT_ENABLED=false` yalnızca test koşarken anlamlıdır.
 
-## 10. Henüz yapılmamış olanlar
+## 11. Henüz yapılmamış olanlar
 
 Dürüst olmak gerekirse bu kurulum üretime ilk adım; şunlar eksik:
 

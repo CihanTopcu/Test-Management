@@ -99,3 +99,41 @@ class AuditEntry(Base):
         ForeignKey("projects.id", ondelete="SET NULL"), index=True)
     detail: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     ip: Mapped[str | None] = mapped_column(String(45))
+
+
+class ReportSubscription(Base, TimestampMixin):
+    """A standing request for a digest by e-mail or in the app.
+
+    People do not open a dashboard they have to remember to open. The digests
+    that earn their keep are the ones that arrive: what failed overnight, and
+    which milestones are about to be missed.
+
+    Delivery is driven by the same external scheduler that flushes the mail
+    queue, rather than an in-process timer -- one container, one cron entry,
+    and nothing double-sends if the app restarts mid-window.
+    """
+    __tablename__ = "report_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("user_id", "project_id", "kind", "frequency"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # null means every project the person can see
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    # summary | failures | milestones
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    # daily | weekly
+    frequency: Mapped[str] = mapped_column(String(10), nullable=False,
+                                           default="daily")
+    # hour of day, in the server's timezone
+    hour: Mapped[int] = mapped_column(Integer, default=8, nullable=False)
+    # 0 = Monday; only meaningful for weekly
+    weekday: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    by_email: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # what the window is measured from, and the guard against double sends
+    last_sent_on: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True))

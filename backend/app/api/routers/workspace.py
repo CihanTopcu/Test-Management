@@ -6,9 +6,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from ... import digests
 from ...db import get_session
 from ...models import (Case, CaseStep, Notification, NotificationPreference,
-                       SavedFilter, Section, SharedStep, Suite, User)
+                       Project, ReportSubscription, SavedFilter, Section,
+                       SharedStep, Suite, User)
 from ...notifications import KINDS, send_pending
 from ..deps import current_user
 from ..permissions import WRITE_CASES, assert_can, capabilities
@@ -270,3 +272,142 @@ def copy_cases(payload: MoveIn, session: Session = Depends(get_session),
     session.commit()
     return {"copied": len(made), "ids": [c.id for c in made],
             "section_id": target.id}
+
+
+# --- scheduled digests ------------------------------------------------------
+
+class SubscriptionIn(BaseModel):
+    project_id: int | None = None
+    kind: str = "failures"
+    frequency: str = "daily"
+    hour: int = Field(8, ge=0, le=23)
+    weekday: int = Field(0, ge=0, le=6)
+    by_email: bool = True
+    is_active: bool = True
+
+
+DIGEST_KINDS = {
+    "summary": "Proje özeti",
+    "failures": "Başarısız testler",
+    "milestones": "Yaklaşan milestone'lar",
+}
+
+
+def _subscription_out(row: ReportSubscription, projects: dict) -> dict:
+    return {
+        "id": row.id, "project_id": row.project_id,
+        "project_name": projects.get(row.project_id) if row.project_id
+                        else "Tüm projeler",
+        "kind": row.kind, "kind_label": DIGEST_KINDS.get(row.kind, row.kind),
+        "frequency": row.frequency, "hour": row.hour, "weekday": row.weekday,
+        "by_email": row.by_email, "is_active": row.is_active,
+        "last_sent_on": row.last_sent_on,
+    }
+
+
+@router.get("/report-subscriptions")
+def list_subscriptions(session: Session = Depends(get_session),
+                       user: User = Depends(current_user)):
+    rows = session.scalars(
+        select(ReportSubscription)
+        .where(ReportSubscription.user_id == user.id)
+        .order_by(ReportSubscription.kind)).all()
+    projects = dict(session.execute(select(Project.id, Project.name)).all())
+    return {"kinds": [{"key": k, "label": v} for k, v in DIGEST_KINDS.items()],
+            "items": [_subscription_out(r, projects) for r in rows]}
+
+
+@router.post("/report-subscriptions", status_code=201)
+def create_subscription(payload: SubscriptionIn,
+                        session: Session = Depends(get_session),
+                        user: User = Depends(current_user)):
+    if payload.kind not in DIGEST_KINDS:
+        raise HTTPException(400, "bilinmeyen rapor turu")
+    existing = session.scalar(
+        select(ReportSubscription).where(
+            ReportSubscription.user_id == user.id,
+            ReportSubscription.project_id == payload.project_id,
+            ReportSubscription.kind == payload.kind,
+            ReportSubscription.frequency == payload.frequency))
+    row = existing or ReportSubscription(user_id=user.id)
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    projects = dict(session.execute(select(Project.id, Project.name)).all())
+    return _subscription_out(row, projects)
+
+
+@router.delete("/report-subscriptions/{subscription_id}", status_code=204)
+def delete_subscription(subscription_id: int,
+                        session: Session = Depends(get_session),
+                        user: User = Depends(current_user)):
+    row = session.get(ReportSubscription, subscription_id)
+    if row is None or row.user_id != user.id:
+        raise HTTPException(404, "abonelik bulunamadi")
+    session.delete(row)
+    session.commit()
+
+
+@router.post("/report-subscriptions/{subscription_id}/preview")
+def preview_subscription(subscription_id: int,
+                         session: Session = Depends(get_session),
+                         user: User = Depends(current_user)):
+    """What this digest would say right now, without sending or recording it.
+
+    Worth having: a digest nobody can see before subscribing is a digest
+    people unsubscribe from after the first one.
+    """
+    row = session.get(ReportSubscription, subscription_id)
+    if row is None or row.user_id != user.id:
+        raise HTTPException(404, "abonelik bulunamadi")
+    built = digests.build(session, row)
+    if built is None:
+        return {"empty": True,
+                "detail": "Şu an gönderilecek bir şey yok — bu rapor boşken"
+                          " gönderilmez."}
+    subject, body = built
+    return {"empty": False, "subject": subject, "body": body}
+
+
+@router.post("/report-subscriptions/dispatch")
+def dispatch(session: Session = Depends(get_session),
+             user: User = Depends(current_user)):
+    """Deliver every digest that is due. A scheduled job calls this.
+
+    Safe to call as often as you like: is_due() allows one delivery per
+    subscription per day, so a cron entry every fifteen minutes costs
+    nothing and covers a container that was down at the chosen hour.
+    """
+    if "admin" not in capabilities(session, user):
+        raise HTTPException(403, "bu islem icin yonetici yetkisi gerekli")
+
+    now = datetime.now(timezone.utc)
+    sent = skipped = empty = 0
+    for row in session.scalars(
+            select(ReportSubscription)
+            .where(ReportSubscription.is_active.is_(True))):
+        if not digests.is_due(row, now):
+            skipped += 1
+            continue
+        built = digests.build(session, row, now)
+        if built is None:
+            # nothing to say: the window still moves on, so the next digest
+            # does not re-report a period nobody was told about
+            empty += 1
+            row.last_sent_on = now
+            continue
+        subject, body = built
+        notification = Notification(
+            user_id=row.user_id, kind="digest", subject=subject, body=body,
+            link=None, email_status="pending" if row.by_email else "skipped")
+        session.add(notification)
+        row.last_sent_on = now
+        sent += 1
+
+    session.commit()
+    result = {"sent": sent, "skipped": skipped, "empty": empty}
+    if sent:
+        result["mail"] = send_pending(session)
+    return result

@@ -15,6 +15,7 @@ import { Overview } from './pages/Overview'
 import { Plans } from './pages/Plans'
 import { Reports } from './pages/Reports'
 import { Runs } from './pages/Runs'
+import { Settings } from './pages/Settings'
 import { SharedSteps } from './pages/SharedSteps'
 import { SuiteView } from './pages/SuiteView'
 import { Suites } from './pages/Suites'
@@ -82,7 +83,7 @@ function Shell() {
 
   // a link without a project falls back to the last one used, then the first
   useEffect(() => {
-    if (route.page === 'dashboard') return
+    if (route.page === 'dashboard' || route.page === 'settings') return
     if (!route.project && projects.length) {
       const remembered = Number(readStored(PROJECT_KEY))
       const known = projects.some((p) => p.id === remembered)
@@ -102,6 +103,7 @@ function Shell() {
   const page = () => {
     // the only screen that is not about one project
     if (route.page === 'dashboard') return <Dashboard />
+    if (route.page === 'settings') return <Settings />
     if (!route.project) {
       return <main className="main"><div className="faint">Proje yükleniyor…</div></main>
     }
@@ -159,7 +161,10 @@ function Shell() {
            className="who" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Icon name="settings" size={15} /> Yönetim
         </a>
-        <span className="who">{me?.name}</span>
+        <a className="who" href={href({ page: 'settings' })}
+           title="Bildirim ve rapor ayarları">
+          {me?.name}
+        </a>
         <button className="ghost icon-only" title="Çıkış"
                 onClick={() => api.logout().then(() => location.reload())}>
           <Icon name="logout" size={16} />
@@ -169,7 +174,8 @@ function Shell() {
       <Shortcuts route={route} />
 
       <div className="body">
-        {route.project && route.page !== 'dashboard' && (
+        {route.project && route.page !== 'dashboard'
+          && route.page !== 'settings' && (
           <Rail route={route} projectName={projectName} />
         )}
         {page()}

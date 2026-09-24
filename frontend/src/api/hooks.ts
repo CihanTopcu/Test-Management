@@ -6,7 +6,8 @@ import type {
   CustomField,
   DefectReport, Distribution, HistoryEntry, Milestone, Project, ProjectMember,
   ProjectStats,
-  Result, RolesResponse, Run, RunSummary, SectionNode, SeriesPoint, Suite, Test,
+  DigestPreview, NotificationPreference, Result, RolesResponse, Run,
+  RunSummary, SectionNode, SeriesPoint, SubscriptionList, Suite, Test,
   TestCase, TestDetail, TestPage, TodoItem, User, UserAdmin,
 } from './types'
 
@@ -195,6 +196,59 @@ export const useAuditLog = (params: {
     },
     placeholderData: (prev) => prev,
   })
+
+/* ---- personal settings --------------------------------------------------- */
+
+export const useNotificationPreferences = () =>
+  useQuery({
+    queryKey: ['notification-preferences'],
+    queryFn: () => api.get<NotificationPreference[]>(
+      '/api/notifications/preferences'),
+  })
+
+export function useSavePreference() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: NotificationPreference | {
+      kind: string; in_app: boolean; email: boolean
+    }) => api.put('/api/notifications/preferences', body),
+    onSuccess: () => client.invalidateQueries({
+      queryKey: ['notification-preferences'] }),
+  })
+}
+
+export const useSubscriptions = () =>
+  useQuery({
+    queryKey: ['report-subscriptions'],
+    queryFn: () => api.get<SubscriptionList>('/api/report-subscriptions'),
+  })
+
+export function useSaveSubscription() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api.post('/api/report-subscriptions', body),
+    onSuccess: () => client.invalidateQueries({
+      queryKey: ['report-subscriptions'] }),
+  })
+}
+
+export function useDeleteSubscription() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/report-subscriptions/${id}`),
+    onSuccess: () => client.invalidateQueries({
+      queryKey: ['report-subscriptions'] }),
+  })
+}
+
+/** What a digest would say right now; sends nothing and records nothing. */
+export function usePreviewSubscription() {
+  return useMutation({
+    mutationFn: (id: number) =>
+      api.post<DigestPreview>(`/api/report-subscriptions/${id}/preview`, {}),
+  })
+}
 
 /* ---- attachments ------------------------------------------------------- */
 
