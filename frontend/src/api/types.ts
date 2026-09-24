@@ -78,6 +78,8 @@ export interface DashboardProject {
   tests: number
   passed: number
   failed: number
+  /** entered, but neither passed nor failed: retouch, blocked, deferred… */
+  other: number
   untested: number
   pass_rate: number | null
   results_in_window: number
@@ -225,8 +227,9 @@ export interface TodayOut {
   assigned_total: number
   my_runs: { run_id: number; run_name: string; project_id: number
              project_name: string; total: number; untested: number
-             passed: number; failed: number; done: number; percent: number
-             is_completed: boolean; last_result_on: string | null }[]
+             passed: number; failed: number; other: number; done: number
+             percent: number; is_completed: boolean
+             last_result_on: string | null }[]
   failures: { project_id: number; project_name: string; run_id: number
               run_name: string; test_id: number; title: string; at: string
               by: string | null }[]
@@ -302,6 +305,7 @@ export interface Run {
   is_archived: boolean
   test_count: number
   passed_count: number
+  failed_count: number
   untested_count: number
 }
 

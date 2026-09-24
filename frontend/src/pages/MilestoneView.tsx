@@ -72,24 +72,32 @@ export function MilestoneView({ route, projectName }: {
     )
   }
 
-  // the run list carries passed and untested; everything else in a run is
-  // some flavour of not-passed, which is how MiniBar reads it too
+  // the run list carries each bucket outright now; the donut used to label
+  // "not passed and not untested" as Failed, so a milestone full of deferred
+  // tests reported itself as a milestone full of failures
   const totals = family.reduce((acc, r: Run) => ({
     test_count: acc.test_count + r.test_count,
     passed_count: acc.passed_count + r.passed_count,
     untested_count: acc.untested_count + r.untested_count,
-    failed_count: acc.failed_count
-      + Math.max(0, r.test_count - r.passed_count - r.untested_count),
-  }), { test_count: 0, passed_count: 0, untested_count: 0, failed_count: 0 })
+    failed_count: acc.failed_count + (r.failed_count ?? 0),
+    other_count: acc.other_count + Math.max(
+      0, r.test_count - r.passed_count - r.untested_count - (r.failed_count ?? 0)),
+  }), { test_count: 0, passed_count: 0, untested_count: 0, failed_count: 0,
+        other_count: 0 })
 
   const pct = totals.test_count
     ? Math.round((totals.passed_count / totals.test_count) * 100) : null
   const left = daysLeft(milestone.due_on)
-  const data = slices(catalog, {
-    '1': totals.passed_count,
-    '5': totals.failed_count,
-    '3': totals.untested_count,
-  })
+  // "Diğer" is a bucket, not a status, so it is not looked up in the
+  // catalogue: it holds retouch, blocked, deferred and aborted together.
+  const data = [
+    ...slices(catalog, { '1': totals.passed_count, '5': totals.failed_count }),
+    ...(totals.other_count > 0
+      ? [{ id: null, count: totals.other_count, label: 'Diğer',
+           color: 'var(--warn)' }]
+      : []),
+    ...slices(catalog, { '3': totals.untested_count }),
+  ]
 
   const startEdit = () => {
     setName(milestone.name)

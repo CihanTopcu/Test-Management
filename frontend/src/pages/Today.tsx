@@ -126,11 +126,17 @@ export function Today() {
                                 run: r.run_id })}>
                   <ProjectTag id={r.project_id} name={r.project_name} />
                   <span className="title">{r.run_name}</span>
-                  <span className="runbar" title={`${r.done}/${r.total}`}>
+                  <span className="runbar"
+                        title={`${r.passed} passed · ${r.failed} failed`
+                               + (r.other ? ` · ${r.other} diğer` : '')
+                               + ` · ${r.untested} untested`}>
                     <span style={{ width: `${100 * r.passed / (r.total || 1)}%`,
                                    background: 'var(--passed)' }} />
                     <span style={{ width: `${100 * r.failed / (r.total || 1)}%`,
                                    background: 'var(--failed)' }} />
+                    {/* deferred, blocked, retouch: entered, but not a failure */}
+                    <span style={{ width: `${100 * r.other / (r.total || 1)}%`,
+                                   background: 'var(--warn)' }} />
                   </span>
                   <span className="when">
                     {r.is_completed ? 'tamamlandı' : `%${r.percent}`}

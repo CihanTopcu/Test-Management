@@ -56,10 +56,13 @@ def list_runs(project_id: int,
             select(Test.run_id, Test.status_id, func.count())
             .where(Test.run_id.in_(ids))
             .group_by(Test.run_id, Test.status_id)):
-        slot = counts.setdefault(run_id, {"total": 0, "passed": 0, "untested": 0})
+        slot = counts.setdefault(
+            run_id, {"total": 0, "passed": 0, "failed": 0, "untested": 0})
         slot["total"] += n
         if status_id == 1:
             slot["passed"] += n
+        elif status_id == 5:
+            slot["failed"] += n
         elif status_id is None or status_id == 3:
             slot["untested"] += n
 
@@ -69,6 +72,7 @@ def list_runs(project_id: int,
         slot = counts.get(run.id, {})
         row.test_count = slot.get("total", 0)
         row.passed_count = slot.get("passed", 0)
+        row.failed_count = slot.get("failed", 0)
         row.untested_count = slot.get("untested", 0)
         out.append(row)
     return out

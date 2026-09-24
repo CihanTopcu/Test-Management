@@ -101,10 +101,13 @@ def list_plans(project_id: int, session: Session = Depends(get_session),
         .group_by(PlanEntry.plan_id, Test.status_id)).all()
     tally: dict[int, dict[str, int]] = {}
     for plan_id, status_id, n in rows:
-        slot = tally.setdefault(plan_id, {"total": 0, "passed": 0, "untested": 0})
+        slot = tally.setdefault(
+            plan_id, {"total": 0, "passed": 0, "failed": 0, "untested": 0})
         slot["total"] += n
         if status_id == 1:
             slot["passed"] += n
+        elif status_id == 5:
+            slot["failed"] += n
         elif status_id is None or status_id == 3:
             slot["untested"] += n
 
@@ -121,6 +124,7 @@ def list_plans(project_id: int, session: Session = Depends(get_session),
         "entry_count": entry_counts.get(p.id, 0),
         "test_count": tally.get(p.id, {}).get("total", 0),
         "passed_count": tally.get(p.id, {}).get("passed", 0),
+        "failed_count": tally.get(p.id, {}).get("failed", 0),
         "untested_count": tally.get(p.id, {}).get("untested", 0),
     } for p in plans]
 
@@ -145,10 +149,13 @@ def get_plan(plan_id: int, session: Session = Depends(get_session),
                 select(Test.run_id, Test.status_id, func.count())
                 .where(Test.run_id.in_([r.id for r in runs]))
                 .group_by(Test.run_id, Test.status_id)):
-            slot = counts.setdefault(run_id, {"total": 0, "passed": 0, "untested": 0})
+            slot = counts.setdefault(
+                run_id, {"total": 0, "passed": 0, "failed": 0, "untested": 0})
             slot["total"] += n
             if status_id == 1:
                 slot["passed"] += n
+            elif status_id == 5:
+                slot["failed"] += n
             elif status_id is None or status_id == 3:
                 slot["untested"] += n
 
@@ -168,6 +175,7 @@ def get_plan(plan_id: int, session: Session = Depends(get_session),
                 "is_completed": r.is_completed,
                 "test_count": counts.get(r.id, {}).get("total", 0),
                 "passed_count": counts.get(r.id, {}).get("passed", 0),
+                "failed_count": counts.get(r.id, {}).get("failed", 0),
                 "untested_count": counts.get(r.id, {}).get("untested", 0),
             } for r in runs if r.plan_entry_id == e.id],
         } for e in entries],

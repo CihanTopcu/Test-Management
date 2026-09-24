@@ -189,6 +189,9 @@ class RunOut(ORMModel):
     is_archived: bool = False
     test_count: int = 0
     passed_count: int = 0
+    # Failed is one status of nine here. Everything the callers used to infer
+    # by subtraction swept retouch, blocked and deferred in with it.
+    failed_count: int = 0
     untested_count: int = 0
 
 

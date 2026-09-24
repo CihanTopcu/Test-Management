@@ -101,18 +101,27 @@ export function Legend({ data, total, onPick, active }: {
 }
 
 export function MiniBar({ run, catalog }: {
-  run: { test_count: number; passed_count: number; untested_count: number }
+  run: { test_count: number; passed_count: number; failed_count?: number
+         untested_count: number }
   catalog?: Catalog
 }) {
   const total = run.test_count || 1
-  const failed = Math.max(0, run.test_count - run.passed_count - run.untested_count)
+  const failed = run.failed_count ?? 0
+  // Retouch, blocked, deferred, aborted: entered verdicts that are not
+  // failures. They used to be folded into the red segment, which made every
+  // deferred test look like a broken one at a glance.
+  const other = Math.max(
+    0, run.test_count - run.passed_count - run.untested_count - failed)
   const parts = [
-    { w: run.passed_count / total, c: statusColor(catalog, 1) },
-    { w: failed / total, c: statusColor(catalog, 5) },
-    { w: run.untested_count / total, c: statusColor(catalog, 3) },
+    { w: run.passed_count / total, c: statusColor(catalog, 1), t: 'passed' },
+    { w: failed / total, c: statusColor(catalog, 5), t: 'failed' },
+    { w: other / total, c: statusColor(catalog, 4), t: 'diğer' },
+    { w: run.untested_count / total, c: statusColor(catalog, 3), t: 'untested' },
   ]
   return (
-    <span className="mini-bar">
+    <span className="mini-bar"
+          title={parts.filter((p) => p.w > 0)
+            .map((p) => `${Math.round(p.w * total)} ${p.t}`).join(' · ')}>
       {parts.map((p, i) => (
         <span key={i} style={{ width: `${p.w * 100}%`, background: p.c }} />
       ))}

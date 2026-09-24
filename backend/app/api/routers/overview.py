@@ -13,6 +13,11 @@ from ..schemas import ActivityItem, ProjectStats, TodoItem
 
 router = APIRouter(prefix="/api", tags=["overview"])
 
+# TestRail's own ids, which this instance kept. "Failed" is one status out of
+# nine, not "everything that is not passed" -- a run holding two deferred
+# tests must not be reported as a run holding two failures.
+PASSED, UNTESTED, FAILED = 1, 3, 5
+
 
 @router.get("/projects/{project_id}/stats", response_model=ProjectStats)
 def project_stats(project_id: int, session: Session = Depends(get_session),
@@ -167,8 +172,9 @@ def dashboard(days: int = 30, session: Session = Depends(get_session),
     for project in projects:
         status = by_project.get(project.id, {})
         tests = sum(status.values())
-        passed = status.get("1", 0)
-        untested = status.get("3", 0) + status.get("untested", 0)
+        passed = status.get(str(PASSED), 0)
+        untested = status.get(str(UNTESTED), 0) + status.get("untested", 0)
+        failed = status.get(str(FAILED), 0)
         items.append({
             "project_id": project.id,
             "name": project.name,
@@ -177,7 +183,8 @@ def dashboard(days: int = 30, session: Session = Depends(get_session),
             "active_runs": active_runs.get(project.id, 0),
             "tests": tests,
             "passed": passed,
-            "failed": max(0, tests - passed - untested),
+            "failed": failed,
+            "other": max(0, tests - passed - untested - failed),
             "untested": untested,
             "pass_rate": round(100 * passed / tests) if tests else None,
             "results_in_window": recent.get(project.id, 0),
@@ -367,29 +374,31 @@ def today(runs: int = Query(8, ge=1, le=50),
         progress = (
             select(Test.run_id,
                    func.count().label("total"),
-                   func.count().filter(Test.status_id == 1).label("passed"),
+                   func.count().filter(Test.status_id == PASSED).label("passed"),
+                   func.count().filter(Test.status_id == FAILED).label("failed"),
                    func.count().filter(
-                       (Test.status_id.is_(None)) | (Test.status_id == 3)
+                       (Test.status_id.is_(None)) | (Test.status_id == UNTESTED)
                    ).label("untested"))
             .where(Test.run_id.in_(recent_ids))
             .group_by(Test.run_id).subquery())
 
         rows = session.execute(
             select(Run.id, Run.name, Project.id, Project.name,
-                   progress.c.total, progress.c.passed, progress.c.untested,
-                   Run.is_completed)
+                   progress.c.total, progress.c.passed, progress.c.failed,
+                   progress.c.untested, Run.is_completed)
             .join(Project, Run.project_id == Project.id)
             .join(progress, progress.c.run_id == Run.id)
             .where(Run.id.in_(recent_ids))).all()
 
         order = {rid: i for i, rid in enumerate(recent_ids)}
-        for rid, rname, pid, pname, total, passed, untested, done in rows:
+        for rid, rname, pid, pname, total, passed, failed, untested, done in rows:
             my_runs.append({
                 "run_id": rid, "run_name": rname,
                 "project_id": pid, "project_name": pname,
                 "total": total, "untested": untested,
                 "passed": passed,
-                "failed": max(0, total - passed - untested),
+                "failed": failed,
+                "other": max(0, total - passed - untested - failed),
                 "done": total - untested,
                 "percent": round(100 * (total - untested) / total) if total else 0,
                 "is_completed": done,
