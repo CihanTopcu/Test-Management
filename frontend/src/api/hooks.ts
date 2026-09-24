@@ -453,9 +453,44 @@ export function useAddResult(runId?: number | null) {
   return useMutation({
     mutationFn: ({ testId, body }: { testId: number; body: Record<string, unknown> }) =>
       api.post<Result>(`/api/tests/${testId}/results`, body),
-    onSuccess: (result) => {
-      client.invalidateQueries({ queryKey: ['results', result.test_id] })
-      client.invalidateQueries({ queryKey: ['test', result.test_id] })
+
+    /**
+     * The row changes colour before the request leaves.
+     *
+     * Somebody working a 200-test run gives a verdict every few seconds. A
+     * grid that waits for the round trip each time turns that rhythm into
+     * stop-start, and the wait is the thing people describe as "slow" long
+     * after the server has stopped being the reason.
+     */
+    onMutate: async ({ testId, body }) => {
+      const status = body.status_id
+      if (typeof status !== 'number') return {}
+      await client.cancelQueries({ queryKey: ['tests', runId] })
+      const previous = client.getQueriesData<TestPage>({
+        queryKey: ['tests', runId] })
+      for (const [key, page] of previous) {
+        if (!page) continue
+        client.setQueryData<TestPage>(key, {
+          ...page,
+          items: page.items.map((t) =>
+            t.id === testId ? { ...t, status_id: status } : t),
+        })
+      }
+      return { previous }
+    },
+
+    // the server refused it; put the grid back rather than leaving a lie
+    onError: (_err, _vars, context) => {
+      for (const [key, page] of context?.previous ?? []) {
+        client.setQueryData(key, page)
+      }
+    },
+
+    onSettled: (result) => {
+      if (result) {
+        client.invalidateQueries({ queryKey: ['results', result.test_id] })
+        client.invalidateQueries({ queryKey: ['test', result.test_id] })
+      }
       client.invalidateQueries({ queryKey: ['tests', runId] })
       client.invalidateQueries({ queryKey: ['run-summary', runId] })
     },

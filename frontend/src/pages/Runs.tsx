@@ -6,8 +6,9 @@ import {
 import { AddRunDialog } from '../components/AddDialogs'
 import { Confirm } from '../components/Confirm'
 import { Dialog } from '../components/Dialog'
+import { RunGrid } from '../components/RunGrid'
 import { Icon } from '../components/Icon'
-import { Donut, Legend, MiniBar, StatusBadge, slices } from '../components/Status'
+import { Donut, Legend, MiniBar, slices } from '../components/Status'
 import { TestPanel } from '../components/TestPanel'
 import { href, type Route } from '../route'
 
@@ -152,6 +153,9 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
   const [adding, setAdding] = useState(false)
   const [addSearch, setAddSearch] = useState('')
   const [addPicked, setAddPicked] = useState<Set<number>>(new Set())
+  // the row the keyboard is on; separate from the route, because opening
+  // the panel is a deliberate act rather than a side effect of moving
+  const [focused, setFocused] = useState<number | null>(null)
 
   useEffect(() => {
     const timer = setTimeout(() => { setQuery(search); setPage(0) }, 300)
@@ -169,6 +173,16 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
   })
   const tests = testPage?.items ?? []
   const matching = testPage?.total ?? 0
+
+  // every page starts with a row under the keyboard, so the first keystroke
+  // does something instead of nothing
+  useEffect(() => {
+    if (!tests.length) { setFocused(null); return }
+    setFocused((current) => (
+      current != null && tests.some((t) => t.id === current)
+        ? current
+        : tests[0].id))
+  }, [tests])
   const bulkStatus = useBulkStatus(route.run)
   const removeRun = useDeleteRun(route.project)
   const membership = useRunMembership(route.run)
@@ -179,6 +193,15 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
   const passed = summary?.by_status['1'] ?? 0
   const untested = (summary?.by_status['3'] ?? 0) + (summary?.by_status['untested'] ?? 0)
   const pct = total ? Math.round((passed / total) * 100) : 0
+  // The bar segments are the catalogue's own statuses in its own order, in
+  // their own colours. An earlier version split the run two ways and painted
+  // everything that was not passed red, so a run with two deferred tests
+  // read as a run with two failures.
+  const bar = (catalog?.statuses ?? [])
+    .filter((st) => !st.is_untested)
+    .map((st) => ({ id: st.id, label: st.label, color: st.color,
+                    count: summary?.by_status[String(st.id)] ?? 0 }))
+    .filter((st) => st.count > 0)
 
   const shown = tests
 
@@ -235,6 +258,21 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
                         ? (membership.add.error as Error).message : null}
                       onAdd={() => membership.add.mutate([...addPicked], {
                         onSuccess: () => setAdding(false) })} />
+
+      {total > 0 && (
+        <div className="runprogress">
+          <div className="track">
+            {bar.map((st) => (
+              <span key={st.id} title={`${st.label}: ${st.count}`}
+                    style={{ width: `${(st.count / total) * 100}%`,
+                             background: st.color ?? 'var(--text-dim)' }} />
+            ))}
+          </div>
+          <b>{(total - untested).toLocaleString('tr-TR')}</b>
+          <span className="faint">/ {total.toLocaleString('tr-TR')} sonuçlandı</span>
+          <span className="right"><b>%{pct}</b> <span className="faint">passed</span></span>
+        </div>
+      )}
 
       {total > 0 && (
         <div className="panel" style={{ padding: 16, marginBottom: 12 }}>
@@ -298,51 +336,11 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
 
       <div className="split">
         <div className="list">
-          <div className="panel" style={{ overflow: 'auto' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ width: 34 }}>
-                    <input type="checkbox"
-                           checked={picked.size > 0 && picked.size === shown.length}
-                           onChange={(e) => setPicked(
-                             e.target.checked ? new Set(shown.map((t) => t.id)) : new Set())} />
-                  </th>
-                  <th style={{ width: 96 }}>ID</th>
-                  <th>Test</th>
-                  <th style={{ width: 110 }}>Durum</th>
-                  <th style={{ width: 130 }}>Atanan</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((t) => (
-                  <tr key={t.id}
-                      className={route.test === t.id || picked.has(t.id) ? 'selected' : ''}>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={picked.has(t.id)}
-                             onChange={() => setPicked((prev) => {
-                               const next = new Set(prev)
-                               if (next.has(t.id)) next.delete(t.id)
-                               else next.add(t.id)
-                               return next
-                             })} />
-                    </td>
-                    <td className="cid" onClick={() => select(t.id)}>T{t.id}</td>
-                    <td className="title" onClick={() => select(t.id)}>{t.title}</td>
-                    <td onClick={() => select(t.id)}>
-                      <StatusBadge catalog={catalog} id={t.status_id} />
-                    </td>
-                    <td className="small muted" onClick={() => select(t.id)}>
-                      {users.find((u) => u.id === t.assignedto_id)?.name ?? '—'}
-                    </td>
-                  </tr>
-                ))}
-                {!shown.length && (
-                  <tr><td colSpan={5} className="faint">Bu filtreyle test yok.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <RunGrid tests={shown} catalog={catalog} users={users}
+                   runId={route.run} archived={Boolean(run?.is_archived)}
+                   focusedId={focused} onFocus={setFocused}
+                   onOpen={select} picked={picked} onPick={setPicked}
+                   emptyLabel="Bu filtreyle test yok." />
 
           {picked.size > 0 && (
             <div className="bulkbar">
