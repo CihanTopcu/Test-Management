@@ -3,6 +3,7 @@ import {
   useActivitySeries, useCatalog, useCoverage, useDefects, useDistribution,
 } from '../api/hooks'
 import { statusColor, statusLabel } from '../components/Status'
+import { QualityReport } from '../components/QualityReport'
 import { href, type Route } from '../route'
 
 const PALETTE = ['#1c6ea4', '#6ca644', '#d99a2b', '#a9457c', '#4a8fb5',
@@ -197,6 +198,8 @@ export function Reports({ route, projectName }: { route: Route; projectName: str
           )}
         </div>
       </div>
+
+      <QualityReport projectId={route.project} />
     </main>
   )
 }

@@ -841,3 +841,11 @@ kbd {
   border-radius: var(--radius-pill); box-shadow: var(--shadow-lg);
   font-size: 13px; letter-spacing: 0.08em;
 }
+
+/* pass/fail proportion for a flaky case */
+.flakybar {
+  display: inline-flex; width: 64px; height: 8px; vertical-align: middle;
+  border-radius: var(--radius-pill); overflow: hidden;
+  background: var(--surface-3);
+}
+.flakybar > span { display: block; height: 100%; }

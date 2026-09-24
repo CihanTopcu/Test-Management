@@ -131,6 +131,18 @@ def section(app_client, admin, suite) -> dict:
 
 
 @pytest.fixture
+def db(app_client):
+    """A session on the same database, for the few tests that need to set up
+    something the API deliberately will not -- a result dated last year, for
+    instance, when created_on is always now()."""
+    from sqlalchemy.orm import Session
+
+    from app.db import engine
+    with Session(engine) as session:
+        yield session
+
+
+@pytest.fixture
 def make_case(app_client, admin, section):
     def _make(title="Örnek case", **extra):
         response = app_client.post("/api/cases", headers=admin, json={

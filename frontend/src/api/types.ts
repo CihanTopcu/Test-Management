@@ -132,6 +132,33 @@ export interface DigestPreview {
   detail?: string
 }
 
+export interface FlakyCase {
+  case_id: number
+  title: string
+  suite_id: number
+  passed: number
+  failed: number
+  runs: number
+  flip_rate: number
+  last_seen: string | null
+}
+
+export interface DuplicateGroup {
+  section_id: number
+  section_name: string
+  title: string
+  count: number
+  case_ids: number[]
+}
+
+export interface NeverRunCase {
+  case_id: number
+  title: string
+  section_id: number
+  section_name: string
+  created_on: string | null
+}
+
 export interface AuditEntry {
   id: number
   created_on: string

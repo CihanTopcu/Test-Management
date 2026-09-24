@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
   ActivityItem, AdminSummary, Attachment, AuditPage, Catalog, CasePage,
-  Coverage, DashboardOut,
+  Coverage, DashboardOut, DuplicateGroup, FlakyCase, NeverRunCase,
   CustomField,
   DefectReport, Distribution, HistoryEntry, Milestone, Project, ProjectMember,
   ProjectStats,
@@ -195,6 +195,39 @@ export const useAuditLog = (params: {
       return api.get<AuditPage>(`/api/admin/audit?${query}`)
     },
     placeholderData: (prev) => prev,
+  })
+
+/* ---- case library health ------------------------------------------------- */
+
+/** Passing 0 days parks the query; the tab that is not open costs nothing. */
+export const useFlakyTests = (projectId?: number, days = 90) =>
+  useQuery({
+    queryKey: ['flaky', projectId, days],
+    queryFn: () => api.get<{ days: number; items: FlakyCase[] }>(
+      `/api/projects/${projectId}/reports/flaky?days=${days}&limit=100`),
+    enabled: !!projectId && days > 0,
+    // an aggregate over a year of results; not worth refetching on focus
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  })
+
+export const useDuplicateCases = (projectId?: number) =>
+  useQuery({
+    queryKey: ['duplicates', projectId],
+    queryFn: () => api.get<{ items: DuplicateGroup[] }>(
+      `/api/projects/${projectId}/reports/duplicates?limit=100`),
+    enabled: !!projectId,
+    staleTime: 5 * 60 * 1000,
+  })
+
+export const useNeverRunCases = (projectId?: number) =>
+  useQuery({
+    queryKey: ['never-run', projectId],
+    queryFn: () => api.get<{
+      total: number; offset: number; limit: number; items: NeverRunCase[]
+    }>(`/api/projects/${projectId}/reports/never-run?limit=100`),
+    enabled: !!projectId,
+    staleTime: 5 * 60 * 1000,
   })
 
 /* ---- personal settings --------------------------------------------------- */
