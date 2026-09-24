@@ -8,7 +8,7 @@ import type {
   Milestone, NeverRunCase, NotificationPreference, Project, ProjectMember,
   ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode,
   SeriesPoint, SubscriptionList, Suite, SyncStatusOut, Test, TestCase,
-  TestDetail, TestPage, TodoItem, User, UserAdmin,
+  TestDetail, TestPage, TodayOut, TodoItem, User, UserAdmin,
 } from './types'
 
 /** Lookup tables change about twice a year; keep them for the session. */
@@ -250,6 +250,15 @@ export const useActivityByUser = (days: number, projectId?: number) =>
     },
     staleTime: 5 * 60 * 1000,
     placeholderData: (prev) => prev,
+  })
+
+/** The landing page's whole payload in one call. */
+export const useToday = () =>
+  useQuery({
+    queryKey: ['today'],
+    queryFn: () => api.get<TodayOut>('/api/today'),
+    // it is the first thing drawn after a login; keep it fresh but cheap
+    staleTime: 60 * 1000,
   })
 
 /** TestRail sync health; refreshed while the admin page is open. */

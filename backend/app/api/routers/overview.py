@@ -1,13 +1,13 @@
 """Project-level roll-ups: the numbers the overview screens are made of."""
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...db import get_session
-from ...models import (Case, CaseHistory, Milestone, Project, Result, Run,
-                       Section, Suite, Test, User)
+from ...models import (Case, CaseHistory, Milestone, Project, ProjectMember,
+                       Result, Run, Section, Suite, Test, User)
 from ..deps import current_user
 from ..schemas import ActivityItem, ProjectStats, TodoItem
 
@@ -306,4 +306,197 @@ def activity_by_user(days: int = 90, project_id: int | None = None,
             "accounts": len(items),
         },
         "items": items,
+    }
+
+
+@router.get("/today")
+def today(runs: int = Query(8, ge=1, le=50),
+          session: Session = Depends(get_session),
+          user: User = Depends(current_user)):
+    """The work in front of the signed-in person, right now.
+
+    The application used to open on project statistics, which tell you how
+    things are but never what to do. This is the other question, and it is
+    the one somebody opening a test tool at 09:00 actually has.
+
+    Four sections, in the order they matter: what is assigned to me, runs I
+    started and have not finished, what broke since yesterday in projects I
+    work in, and milestones about to come due. One endpoint rather than four
+    calls, because the whole point is that the page is there before you have
+    decided to wait for it.
+    """
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=1)
+
+    # --- assigned to me, still unanswered ---------------------------------
+    assigned_rows = session.execute(
+        select(Project.id, Project.name, Run.id, Run.name,
+               func.count(Test.id))
+        .select_from(Test)
+        .join(Run, Test.run_id == Run.id)
+        .join(Project, Run.project_id == Project.id)
+        .where(Test.assignedto_id == user.id,
+               Run.is_completed.is_(False), Run.is_archived.is_(False),
+               (Test.status_id.is_(None)) | (Test.status_id == 3))
+        .group_by(Project.id, Project.name, Run.id, Run.name)
+        .order_by(func.count(Test.id).desc())
+        .limit(12)).all()
+
+    assigned = [{"project_id": pid, "project_name": pname,
+                 "run_id": rid, "run_name": rname, "pending": n}
+                for pid, pname, rid, rname, n in assigned_rows]
+
+    # --- runs that moved recently -----------------------------------------
+    # Not "runs I started": in this instance runs are opened by automation,
+    # so scoping to created_by returns nothing for everyone. What people
+    # actually want to see is what has been running.
+    # No date floor. A cut-over instance can sit quiet for weeks, and a
+    # section that empties itself on exactly those mornings is the section
+    # nobody trusts. The row carries how long ago it was instead.
+    recent = session.execute(
+        select(Test.run_id, func.max(Result.created_on))
+        .join(Result, Result.test_id == Test.id)
+        .group_by(Test.run_id)
+        .order_by(func.max(Result.created_on).desc())
+        .limit(runs)).all()
+    recent_ids = [r for r, _ in recent]
+    last_seen = {r: at for r, at in recent}
+
+    my_runs = []
+    if recent_ids:
+        progress = (
+            select(Test.run_id,
+                   func.count().label("total"),
+                   func.count().filter(Test.status_id == 1).label("passed"),
+                   func.count().filter(
+                       (Test.status_id.is_(None)) | (Test.status_id == 3)
+                   ).label("untested"))
+            .where(Test.run_id.in_(recent_ids))
+            .group_by(Test.run_id).subquery())
+
+        rows = session.execute(
+            select(Run.id, Run.name, Project.id, Project.name,
+                   progress.c.total, progress.c.passed, progress.c.untested,
+                   Run.is_completed)
+            .join(Project, Run.project_id == Project.id)
+            .join(progress, progress.c.run_id == Run.id)
+            .where(Run.id.in_(recent_ids))).all()
+
+        order = {rid: i for i, rid in enumerate(recent_ids)}
+        for rid, rname, pid, pname, total, passed, untested, done in rows:
+            my_runs.append({
+                "run_id": rid, "run_name": rname,
+                "project_id": pid, "project_name": pname,
+                "total": total, "untested": untested,
+                "passed": passed,
+                "failed": max(0, total - passed - untested),
+                "done": total - untested,
+                "percent": round(100 * (total - untested) / total) if total else 0,
+                "is_completed": done,
+                "last_result_on": last_seen.get(rid),
+            })
+        my_runs.sort(key=lambda r: order.get(r["run_id"], 99))
+
+    # --- what broke since yesterday ---------------------------------------
+    # Scoped to projects the person is a member of; with no membership rows
+    # at all that would hide everything, so an unscoped account sees all.
+    member_of = [m for (m,) in session.execute(
+        select(ProjectMember.project_id)
+        .where(ProjectMember.user_id == user.id)).all()]
+
+    failure_where = [Result.created_on >= since, Result.status_id == 5,
+                     Run.is_archived.is_(False)]
+    if member_of:
+        failure_where.append(Run.project_id.in_(member_of))
+
+    failure_rows = session.execute(
+        select(Project.id, Project.name, Run.id, Run.name, Test.id,
+               Test.title, Result.created_on, User.name)
+        .select_from(Result)
+        .join(Test, Result.test_id == Test.id)
+        .join(Run, Test.run_id == Run.id)
+        .join(Project, Run.project_id == Project.id)
+        .outerjoin(User, Result.created_by == User.id)
+        .where(*failure_where)
+        .order_by(Result.created_on.desc())
+        .limit(15)).all()
+
+    failures = [{"project_id": pid, "project_name": pname,
+                 "run_id": rid, "run_name": rname, "test_id": tid,
+                 "title": title, "at": at, "by": by}
+                for pid, pname, rid, rname, tid, title, at, by in failure_rows]
+
+    total_failures = session.scalar(
+        select(func.count()).select_from(Result)
+        .join(Test, Result.test_id == Test.id)
+        .join(Run, Test.run_id == Run.id)
+        .where(*failure_where)) or 0
+
+    # --- milestones about to come due --------------------------------------
+    # Bounded on both sides. Something due in the next week is a plan; one
+    # that slipped four years ago is a cleanup task and does not belong on
+    # a page about today.
+    horizon = now + timedelta(days=7)
+    floor = now - timedelta(days=60)
+    ms_where = [Milestone.is_completed.is_(False),
+                Milestone.due_on.is_not(None), Milestone.due_on <= horizon,
+                Milestone.due_on >= floor]
+    if member_of:
+        ms_where.append(Milestone.project_id.in_(member_of))
+
+    ms_rows = session.execute(
+        select(Milestone.id, Milestone.name, Milestone.due_on,
+               Project.id, Project.name)
+        .join(Project, Milestone.project_id == Project.id)
+        .where(*ms_where)
+        .order_by(Milestone.due_on)
+        .limit(10)).all()
+
+    milestones = [{
+        "milestone_id": mid, "name": name, "due_on": due,
+        "project_id": pid, "project_name": pname,
+        "days": (due - now).days,
+    } for mid, name, due, pid, pname in ms_rows]
+
+    # --- the projects this person works in ---------------------------------
+    # Sixteen of them; a strip of one-click entries is the thing that makes
+    # this page worth opening on a morning when nothing else moved.
+    project_where = []
+    if member_of:
+        project_where.append(Project.id.in_(member_of))
+    project_rows = session.execute(
+        select(Project.id, Project.name)
+        .where(Project.is_completed.is_(False), *project_where)
+        .order_by(Project.name)).all()
+
+    case_counts = dict(session.execute(
+        select(Suite.project_id, func.count())
+        .join(Case, Case.suite_id == Suite.id)
+        .where(Case.is_deleted.is_(False))
+        .group_by(Suite.project_id)).all())
+    open_runs = dict(session.execute(
+        select(Run.project_id, func.count())
+        .where(Run.is_archived.is_(False), Run.is_completed.is_(False))
+        .group_by(Run.project_id)).all())
+
+    projects = [{"project_id": pid, "name": name,
+                 "cases": case_counts.get(pid, 0),
+                 "open_runs": open_runs.get(pid, 0)}
+                for pid, name in project_rows]
+
+    return {
+        "user": {"id": user.id, "name": user.name},
+        "generated_on": now,
+        "projects": projects,
+        "assigned": assigned,
+        "assigned_total": sum(a["pending"] for a in assigned),
+        "my_runs": my_runs,
+        "failures": failures,
+        "failures_total": total_failures,
+        "milestones": milestones,
+        "scoped_to_memberships": bool(member_of),
+        # said out loud so an empty page is explained rather than just empty
+        "assignment_in_use": bool(session.scalar(
+            select(func.count()).select_from(Test)
+            .where(Test.assignedto_id.is_not(None)).limit(1))),
     }

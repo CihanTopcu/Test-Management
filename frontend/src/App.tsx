@@ -19,8 +19,10 @@ import { Runs } from './pages/Runs'
 import { Settings } from './pages/Settings'
 import { SharedSteps } from './pages/SharedSteps'
 import { SuiteView } from './pages/SuiteView'
+import { Today } from './pages/Today'
 import { Suites } from './pages/Suites'
 import { Todo } from './pages/Todo'
+import { projectColor } from './projectColor'
 import { href, useRoute, type Page, type Route } from './route'
 
 const THEME_KEY = 'tm.theme'
@@ -45,9 +47,14 @@ function Rail({ route, projectName }: { route: Route; projectName: string }) {
   const { data: stats } = useProjectStats(route.project)
   // the case page has no nav entry of its own; it belongs under the suites tab
   const active: Page = route.page === 'cases' ? 'suites' : route.page
+  // the rail carries the project's identity colour: with sixteen projects
+  // that all look alike, this is what stops people reading the wrong one
+  const colour = projectColor(route.project)
 
   return (
-    <aside className="rail">
+    <aside className="rail" style={{
+      '--project': colour.ink, '--project-soft': colour.soft,
+    } as React.CSSProperties}>
       <div className="proj">
         <span className="chip">{projectName.slice(0, 1) || '?'}</span>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{projectName}</span>
@@ -84,7 +91,8 @@ function Shell() {
 
   // a link without a project falls back to the last one used, then the first
   useEffect(() => {
-    if (route.page === 'dashboard' || route.page === 'settings') return
+    if (route.page === 'dashboard' || route.page === 'settings'
+        || route.page === 'today') return
     if (!route.project && projects.length) {
       const remembered = Number(readStored(PROJECT_KEY))
       const known = projects.some((p) => p.id === remembered)
@@ -105,6 +113,8 @@ function Shell() {
     // the only screen that is not about one project
     if (route.page === 'dashboard') return <Dashboard />
     if (route.page === 'settings') return <Settings />
+    // the front door: work, not statistics
+    if (route.page === 'today') return <Today />
     if (!route.project) {
       return <main className="main"><div className="faint">Proje yükleniyor…</div></main>
     }
@@ -144,9 +154,12 @@ function Shell() {
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
 
-        <a className={`who ${route.page === 'dashboard' ? 'active' : ''}`}
-           href={href({ page: 'dashboard' })}
-           style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <a className={`masthead-link ${route.page === 'today' ? 'active' : ''}`}
+           href={href({ page: 'today' })}>
+          <Icon name="check-circle" size={15} /> Bugün
+        </a>
+        <a className={`masthead-link ${route.page === 'dashboard' ? 'active' : ''}`}
+           href={href({ page: 'dashboard' })}>
           <Icon name="grid" size={15} /> Tüm Projeler
         </a>
 
@@ -176,7 +189,7 @@ function Shell() {
 
       <div className="body">
         {route.project && route.page !== 'dashboard'
-          && route.page !== 'settings' && (
+          && route.page !== 'settings' && route.page !== 'today' && (
           <Rail route={route} projectName={projectName} />
         )}
         {page()}

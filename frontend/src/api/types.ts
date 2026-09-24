@@ -215,6 +215,28 @@ export interface ActivityByUserOut {
   items: UserActivity[]
 }
 
+export interface TodayOut {
+  user: { id: number; name: string }
+  generated_on: string
+  projects: { project_id: number; name: string; cases: number
+              open_runs: number }[]
+  assigned: { project_id: number; project_name: string; run_id: number
+              run_name: string; pending: number }[]
+  assigned_total: number
+  my_runs: { run_id: number; run_name: string; project_id: number
+             project_name: string; total: number; untested: number
+             passed: number; failed: number; done: number; percent: number
+             is_completed: boolean; last_result_on: string | null }[]
+  failures: { project_id: number; project_name: string; run_id: number
+              run_name: string; test_id: number; title: string; at: string
+              by: string | null }[]
+  failures_total: number
+  milestones: { milestone_id: number; name: string; due_on: string
+                project_id: number; project_name: string; days: number }[]
+  scoped_to_memberships: boolean
+  assignment_in_use: boolean
+}
+
 export interface AuditEntry {
   id: number
   created_on: string

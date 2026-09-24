@@ -304,8 +304,8 @@ a.masthead-link:hover, .masthead .who:hover {
 }
 .rail .proj .chip {
   width: 28px; height: 28px; border-radius: 9px; flex: none;
-  /* the gradient the product design uses on its card faces */
-  background: linear-gradient(135deg, #092c4c 0%, #0e4e6e 55%, #12809e 100%);
+  /* the project's own identity colour, not a fixed brand gradient */
+  background: var(--project, var(--accent));
   color: #fff; display: grid; place-items: center;
   font-size: 12px; font-weight: 700;
 }
@@ -891,3 +891,136 @@ kbd {
 /* on the sign-in card the page is dark, so the mark keeps its light tone */
 .wordmark .logotype { color: #5cd4ec; }
 .wordmark .logotype .word { color: #fff; }
+
+/* ---- Today ------------------------------------------------------------- */
+/* The front door. Cards rather than one long table, because the four things
+   it answers are different in kind and a uniform list would flatten them. */
+.today { max-width: 1320px; }
+.today-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+.today-head h1 { font-size: 26px; font-weight: 640; letter-spacing: -0.02em; }
+
+.today-grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.today-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 16px 6px; min-width: 0;
+}
+.today-card.wide { grid-column: 1 / -1; }
+.today-card > header {
+  display: flex; align-items: center; gap: 9px; margin-bottom: 8px;
+}
+.today-card h2 {
+  font-size: 14px; font-weight: 640; letter-spacing: -0.01em; margin: 0;
+}
+.today-card .count {
+  margin-left: auto; font-size: 13px; font-weight: 700; color: var(--text-dim);
+  background: var(--surface-2); border-radius: var(--radius-pill);
+  padding: 1px 9px;
+}
+.today-card .hint {
+  color: var(--text-dim); font-size: 12.5px; line-height: 1.5;
+  margin: 2px 0 12px;
+}
+.today-card .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.today-card .dot.fail { background: var(--failed); }
+.today-card .dot.run { background: var(--accent); }
+.today-card .dot.mine { background: #7a5af0; }
+.today-card .dot.ms { background: var(--retest); }
+
+.today-card .rows { display: flex; flex-direction: column; }
+.today-card .row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 6px; margin: 0 -6px;
+  border-radius: var(--radius-sm); text-decoration: none; color: inherit;
+  border-top: 1px solid var(--border);
+}
+.today-card .row:first-child { border-top: none; }
+.today-card .row:hover { background: var(--surface-2); }
+.today-card .row .title {
+  flex: 1; min-width: 0; font-size: 13px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.today-card .row .meta,
+.today-card .row .when {
+  font-size: 11.5px; color: var(--text-faint); white-space: nowrap;
+}
+.today-card .row .meta {
+  max-width: 190px; overflow: hidden; text-overflow: ellipsis;
+}
+.today-card .row .when.late { color: var(--danger); font-weight: 600; }
+
+/* a project's identity colour, so you never misread which one you are in */
+.ptag {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.01em;
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  white-space: nowrap; flex: none; max-width: 150px;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+.runbar {
+  display: inline-flex; width: 90px; height: 6px; flex: none;
+  border-radius: var(--radius-pill); overflow: hidden;
+  background: var(--surface-3);
+}
+.runbar > span { display: block; height: 100%; }
+
+@media (max-width: 1080px) {
+  .today-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* masthead links */
+.masthead-link {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--top-text); font-size: 13px; font-weight: 500;
+  text-decoration: none; padding: 7px 11px; border-radius: var(--radius);
+  white-space: nowrap;
+}
+.masthead-link.active { background: var(--accent-soft); color: var(--accent); }
+
+/* the rail takes the project's colour: active item, chip and hairline */
+.rail .proj .chip { background: var(--project, var(--accent)); }
+.rail a.active {
+  background: var(--project-soft, var(--accent-soft));
+  color: var(--project, var(--accent));
+}
+.rail a.active .icon { color: var(--project, var(--accent)); }
+.rail { border-right: 1px solid var(--border); }
+.rail::before {
+  content: ''; display: block; height: 3px; margin: 0 0 6px;
+  background: var(--project, var(--accent));
+}
+
+/* the project strip: sixteen projects, one click each, each in its colour */
+.projstrip {
+  display: grid; gap: 10px; margin-bottom: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+.projcard {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 11px 13px 11px 15px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-xs);
+  text-decoration: none; color: inherit;
+  transition: border-color .14s var(--ease), transform .14s var(--ease),
+              box-shadow .14s var(--ease);
+}
+.projcard .edge {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--project);
+}
+.projcard:hover {
+  border-color: var(--project); transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+.projcard .name {
+  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.projcard .meta { font-size: 11.5px; color: var(--text-faint); }
+
+/* cards size to their content instead of stretching to the tallest */
+.today-grid { align-items: start; }
