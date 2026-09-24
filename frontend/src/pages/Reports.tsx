@@ -9,28 +9,37 @@ import { href, type Route } from '../route'
 const PALETTE = ['#1c6ea4', '#6ca644', '#d99a2b', '#a9457c', '#4a8fb5',
                  '#8a8a8a', '#5c7cb0', '#b8703f']
 
-function Bars({ buckets, total, colorAt }: {
+/** A bar is a question with an answer behind it, so it becomes a link
+ *  wherever the caller can say where that answer lives. */
+function Bars({ buckets, total, colorAt, linkAt }: {
   buckets: { label: string; count: number }[]
   total: number
   colorAt?: (i: number) => string
+  linkAt?: (i: number) => string | undefined
 }) {
   const max = Math.max(1, ...buckets.map((b) => b.count))
   return (
     <div className="hbars">
-      {buckets.map((b, i) => (
-        <div className="hbar" key={b.label}>
-          <span className="lbl" title={b.label}>{b.label}</span>
-          <span className="track">
-            <span className="fill"
-                  style={{ width: `${(b.count / max) * 100}%`,
-                           background: colorAt?.(i) ?? PALETTE[i % PALETTE.length] }} />
-          </span>
-          <span className="val">
-            {b.count.toLocaleString('tr-TR')}
-            <span className="faint"> {total ? Math.round((b.count / total) * 100) : 0}%</span>
-          </span>
-        </div>
-      ))}
+      {buckets.map((b, i) => {
+        const to = linkAt?.(i)
+        const inner = (
+          <>
+            <span className="lbl" title={b.label}>{b.label}</span>
+            <span className="track">
+              <span className="fill"
+                    style={{ width: `${(b.count / max) * 100}%`,
+                             background: colorAt?.(i) ?? PALETTE[i % PALETTE.length] }} />
+            </span>
+            <span className="val">
+              {b.count.toLocaleString('tr-TR')}
+              <span className="faint"> {total ? Math.round((b.count / total) * 100) : 0}%</span>
+            </span>
+          </>
+        )
+        return to
+          ? <a className="hbar linked" key={b.label} href={to}>{inner}</a>
+          : <div className="hbar" key={b.label}>{inner}</div>
+      })}
       {buckets.length === 0 && <span className="faint small">Veri yok.</span>}
     </div>
   )
@@ -111,6 +120,10 @@ export function Reports({ route, projectName }: { route: Route; projectName: str
   const { data: defects } = useDefects(route.project)
   const { data: catalog } = useCatalog()
 
+  /** Where a chart sends you: the filtered case list, in the address bar. */
+  const explore = (filters: Record<string, string>) =>
+    href({ page: 'cases', project: route.project, filters })
+
   return (
     <main className="main">
       <div className="crumbs"><b>{projectName}</b></div>
@@ -122,32 +135,74 @@ export function Reports({ route, projectName }: { route: Route; projectName: str
       {coverage && (
         <div className="cards" style={{ marginBottom: 14 }}>
           {[
-            { n: coverage.cases, k: 'toplam case' },
+            { n: coverage.cases, k: 'toplam case', to: explore({}) },
             { n: coverage.with_refs, k: 'gereksinime bağlı',
-              sub: coverage.cases ? Math.round((coverage.with_refs / coverage.cases) * 100) : 0 },
+              sub: coverage.cases ? Math.round((coverage.with_refs / coverage.cases) * 100) : 0,
+              to: explore({ refs: 'with' }) },
             { n: coverage.executed, k: 'en az bir kez koşulmuş',
-              sub: coverage.cases ? Math.round((coverage.executed / coverage.cases) * 100) : 0 },
-            { n: defects?.total ?? 0, k: 'farklı hata kaydı' },
-          ].map((t) => (
-            <div className="panel tile lift" key={t.k}>
-              <div className="n">
-                {t.n.toLocaleString('tr-TR')}
-                {t.sub !== undefined && <span className="faint" style={{ fontSize: 15 }}> · %{t.sub}</span>}
-              </div>
-              <div className="k">{t.k}</div>
+              sub: coverage.cases ? Math.round((coverage.executed / coverage.cases) * 100) : 0,
+              to: explore({ executed: 'yes', sort: 'runs' }) },
+            { n: defects?.total ?? 0, k: 'farklı hata kaydı',
+              to: undefined as string | undefined },
+          ].map((t) => {
+            const inner = (
+              <>
+                <div className="n">
+                  {t.n.toLocaleString('tr-TR')}
+                  {t.sub !== undefined && <span className="faint" style={{ fontSize: 15 }}> · %{t.sub}</span>}
+                </div>
+                <div className="k">{t.k}</div>
+              </>
+            )
+            return t.to
+              ? <a className="panel tile lift linked" key={t.k} href={t.to}>{inner}</a>
+              : <div className="panel tile lift" key={t.k}>{inner}</div>
+          })}
+        </div>
+      )}
+
+      {/* The two numbers this library is judged on. They were only ever
+          readable as their complement -- "11% linked" says nothing about
+          which 89% to go and fix. */}
+      {coverage && coverage.cases > 0 && (
+        <div className="cards" style={{ marginBottom: 14 }}>
+          <a className="panel tile lift linked gap" href={explore({ executed: 'no' })}>
+            <div className="n">
+              {(coverage.cases - coverage.executed).toLocaleString('tr-TR')}
+              <span className="faint" style={{ fontSize: 15 }}>
+                {' · %'}{Math.round(100 * (coverage.cases - coverage.executed) / coverage.cases)}
+              </span>
             </div>
-          ))}
+            <div className="k">hiç koşulmamış case</div>
+          </a>
+          <a className="panel tile lift linked gap" href={explore({ refs: 'without' })}>
+            <div className="n">
+              {(coverage.cases - coverage.with_refs).toLocaleString('tr-TR')}
+              <span className="faint" style={{ fontSize: 15 }}>
+                {' · %'}{Math.round(100 * (coverage.cases - coverage.with_refs) / coverage.cases)}
+              </span>
+            </div>
+            <div className="k">gereksinime bağlı olmayan case</div>
+          </a>
         </div>
       )}
 
       <div className="cards" style={{ marginBottom: 14 }}>
         <div className="panel report-card">
           <h3>{byType?.title ?? 'Case tipi dağılımı'}</h3>
-          <Bars buckets={byType?.buckets ?? []} total={byType?.total ?? 0} />
+          <Bars buckets={byType?.buckets ?? []} total={byType?.total ?? 0}
+                linkAt={(i) => {
+                  const id = byType?.buckets[i]?.id
+                  return id == null ? undefined : explore({ type_id: String(id) })
+                }} />
         </div>
         <div className="panel report-card">
           <h3>{byPriority?.title ?? 'Öncelik dağılımı'}</h3>
-          <Bars buckets={byPriority?.buckets ?? []} total={byPriority?.total ?? 0} />
+          <Bars buckets={byPriority?.buckets ?? []} total={byPriority?.total ?? 0}
+                linkAt={(i) => {
+                  const id = byPriority?.buckets[i]?.id
+                  return id == null ? undefined : explore({ priority_id: String(id) })
+                }} />
         </div>
       </div>
 
@@ -159,7 +214,11 @@ export function Reports({ route, projectName }: { route: Route; projectName: str
         <div className="panel report-card">
           <h3>Suite başına case sayısı</h3>
           <Bars buckets={(coverage?.by_suite ?? []).slice(0, 12)}
-                total={coverage?.cases ?? 0} />
+                total={coverage?.cases ?? 0}
+                linkAt={(i) => {
+                  const id = coverage?.by_suite[i]?.id
+                  return id == null ? undefined : explore({ suite_id: String(id) })
+                }} />
         </div>
 
         <div className="panel report-card">

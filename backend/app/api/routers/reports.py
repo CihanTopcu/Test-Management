@@ -38,15 +38,19 @@ def property_distribution(project_id: int,
     else:
         column, model, label_col = Case.priority_id, Priority, Priority.name
 
+    # the id travels with the bucket so the bar can become a link: a
+    # distribution nobody can click into is a number you have to go and
+    # reproduce by hand
     rows = session.execute(
-        select(label_col, func.count())
+        select(model.id, label_col, func.count())
         .select_from(Case)
         .outerjoin(model, column == model.id)
         .where(Case.suite_id.in_(suite_ids), Case.is_deleted.is_(False))
-        .group_by(label_col)
+        .group_by(model.id, label_col)
         .order_by(func.count().desc())).all()
 
-    buckets = [{"label": name or "Belirsiz", "count": n} for name, n in rows]
+    buckets = [{"id": bucket_id, "label": name or "Belirsiz", "count": n}
+               for bucket_id, name, n in rows]
     return DistributionOut(
         title="Case tipi dağılımı" if by == "type" else "Öncelik dağılımı",
         buckets=buckets, total=sum(b["count"] for b in buckets))
@@ -125,16 +129,18 @@ def coverage(project_id: int, session: Session = Depends(get_session),
         .where(Run.project_id == project_id, Test.case_id.is_not(None)))
 
     by_suite = session.execute(
-        select(Suite.name, func.count(Case.id))
+        select(Suite.id, Suite.name, func.count(Case.id))
         .join(Case, Case.suite_id == Suite.id)
         .where(Suite.project_id == project_id, Case.is_deleted.is_(False))
-        .group_by(Suite.name).order_by(func.count(Case.id).desc())).all()
+        .group_by(Suite.id, Suite.name)
+        .order_by(func.count(Case.id).desc())).all()
 
     return {
         "cases": total,
         "with_refs": with_refs,
         "executed": executed,
-        "by_suite": [{"label": name, "count": n} for name, n in by_suite],
+        "by_suite": [{"id": sid, "label": name, "count": n}
+                     for sid, name, n in by_suite],
     }
 
 

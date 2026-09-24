@@ -8,6 +8,7 @@ import type {
   Milestone, NeverRunCase, NotificationPreference, Project, ProjectMember,
   ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode,
   SeriesPoint, SubscriptionList, Suite, SyncStatusOut, Test, TestCase,
+  CaseExplorerPage,
   TestDetail, TestPage, TodayOut, TodoItem, User, UserAdmin,
 } from './types'
 
@@ -751,6 +752,20 @@ export function useCreateSection(suiteId?: number) {
 
 export const useTodo = () =>
   useQuery({ queryKey: ['todo'], queryFn: () => api.get<TodoItem[]>('/api/todo') })
+
+/** The case library across a whole project, filtered: where reports land. */
+export const useCaseExplorer = (projectId: number | undefined,
+                                filters: Record<string, string>) =>
+  useQuery({
+    queryKey: ['explore', projectId, filters],
+    queryFn: () => api.get<CaseExplorerPage>(
+      `/api/projects/${projectId}/cases?`
+      + new URLSearchParams(filters).toString()),
+    enabled: !!projectId,
+    // the counts move with every result posted; a stale page here is worse
+    // than a slow one, because people act on "never run"
+    staleTime: 30 * 1000,
+  })
 
 export const useDistribution = (projectId?: number, by: 'type' | 'priority' = 'type') =>
   useQuery({

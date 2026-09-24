@@ -7,7 +7,8 @@ import { useCallback, useEffect, useState } from 'react'
  *   #/dashboard             (projeden bagimsiz)
  *   #/p/3/overview
  *   #/p/3/suites            #/p/3/suites/42          #/p/3/suites/42/sec/300
- *   #/p/3/cases/15477
+ *   #/p/3/cases           #/p/3/cases/15477
+ *   #/p/3/cases?executed=no&sort=runs
  *   #/p/3/runs              #/p/3/runs/73150/t/9236740
  *   #/p/3/milestones        #/p/3/milestones/558
  *
@@ -28,6 +29,10 @@ export interface Route {
   test?: number
   plan?: number
   milestone?: number
+  /** Trailing ?key=value pairs. Report charts drill in through these, and
+   *  because they live in the address the filtered list is pasteable like
+   *  every other screen here. */
+  filters?: Record<string, string>
 }
 
 const PAGES: Page[] = ['overview', 'todo', 'suites', 'cases', 'runs',
@@ -35,7 +40,9 @@ const PAGES: Page[] = ['overview', 'todo', 'suites', 'cases', 'runs',
                        'dashboard', 'settings', 'today']
 
 function parse(): Route {
-  const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean)
+  const raw = location.hash.replace(/^#\/?/, '')
+  const cut = raw.indexOf('?')
+  const parts = (cut < 0 ? raw : raw.slice(0, cut)).split('/').filter(Boolean)
   // the front door is work, not statistics
   const route: Route = { page: 'today' }
 
@@ -66,6 +73,12 @@ function parse(): Route {
     if (parts[i] === 'sec') route.section = value
     else if (parts[i] === 't') route.test = value
   }
+
+  if (cut >= 0) {
+    const filters: Record<string, string> = {}
+    new URLSearchParams(raw.slice(cut + 1)).forEach((v, k) => { filters[k] = v })
+    if (Object.keys(filters).length) route.filters = filters
+  }
   return route
 }
 
@@ -86,7 +99,8 @@ export function href(route: Route): string {
   } else if (route.page === 'milestones' && route.milestone) {
     parts.push(String(route.milestone))
   }
-  return '#/' + parts.join('/')
+  const query = new URLSearchParams(route.filters ?? {}).toString()
+  return '#/' + parts.join('/') + (query ? `?${query}` : '')
 }
 
 export function useRoute(): [Route, (next: Route) => void] {

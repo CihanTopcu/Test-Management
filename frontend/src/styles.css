@@ -1081,3 +1081,38 @@ kbd {
 }
 .runprogress .track > span { display: block; transition: width .4s var(--ease); }
 .runprogress .right { margin-left: 4px; }
+
+/* ---- case explorer ------------------------------------------------------
+   The project-wide filtered case library: where every report drills into. */
+.explorer-bar {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 10px 12px;
+}
+.explorer-bar .grow { flex: 1 1 240px; min-width: 200px; }
+.explorer-bar select { min-width: 0; max-width: 200px; }
+
+.explorer-table tbody tr { cursor: pointer; }
+.explorer-table td.title {
+  max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.explorer-table .ref {
+  font-size: 11px; padding: 2px 6px; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+/* ---- a chart you can click ---------------------------------------------
+   Reports used to end in a number. Anything that carries a filter into the
+   explorer says so: it lifts, and the label takes the link colour. */
+.hbar.linked { text-decoration: none; color: inherit; border-radius: var(--radius-sm); }
+.hbar.linked:hover { background: var(--accent-soft); }
+.hbar.linked:hover .lbl { color: var(--accent); }
+.hbar.linked .track { transition: none; }
+
+.tile.linked { text-decoration: none; color: inherit; display: block; }
+/* the gap tiles: the same figure read the other way round, so they need to
+   look like work rather than like another statistic */
+.tile.gap { border-left: 3px solid var(--warn); }
+.tile.gap .n { color: var(--warn); }
+.tile.linked:hover { border-color: var(--accent); }
+.tile.linked:hover .k { color: var(--accent); }

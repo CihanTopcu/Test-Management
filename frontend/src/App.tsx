@@ -7,6 +7,7 @@ import { Notifications } from './components/Notifications'
 import { Omnibox } from './components/Omnibox'
 import { Shortcuts } from './components/Shortcuts'
 import { Admin } from './pages/Admin'
+import { CaseExplorer } from './pages/CaseExplorer'
 import { CaseView } from './pages/CaseView'
 import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
@@ -124,7 +125,11 @@ function Shell() {
         return route.suite
           ? <SuiteView route={route} projectName={projectName} />
           : <Suites route={route} projectName={projectName} />
-      case 'cases': return <CaseView route={route} projectName={projectName} />
+      // a case id opens that case; without one it is the project-wide
+      // filtered library, which is where every report drills into
+      case 'cases': return route.case
+        ? <CaseView route={route} projectName={projectName} />
+        : <CaseExplorer route={route} projectName={projectName} />
       case 'runs': return <Runs route={route} projectName={projectName} />
       case 'milestones': return route.milestone
         ? <MilestoneView route={route} projectName={projectName} />

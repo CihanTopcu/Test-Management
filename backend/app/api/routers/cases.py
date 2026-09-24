@@ -2,13 +2,13 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ...audit import record
 from ...db import get_session
 from ...models import (Attachment, Case, CaseHistory, CaseStep, Run, Section,
-                       Suite, User)
+                       Suite, Test, User)
 from ..deps import current_user
 from ..permissions import WRITE_CASES, assert_can
 from ..rendering import referenced_ids, rewrite_deep
@@ -376,6 +376,91 @@ def list_cases(suite_id: int,
         .offset(offset).limit(limit)).all()
     return CasePage(total=total, offset=offset, limit=limit,
                     items=[CaseSummary.model_validate(r) for r in rows])
+
+
+@router.get("/projects/{project_id}/cases")
+def explore_cases(project_id: int,
+                  q: str | None = None,
+                  suite_id: int | None = None,
+                  type_id: int | None = None,
+                  priority_id: int | None = None,
+                  refs: str | None = Query(None, pattern="^(with|without)$"),
+                  executed: str | None = Query(None, pattern="^(yes|no)$"),
+                  sort: str = Query("title", pattern="^(title|runs|updated|id)$"),
+                  offset: int = 0,
+                  limit: int = Query(100, le=500),
+                  session: Session = Depends(get_session),
+                  _: User = Depends(current_user)):
+    """The case library across a whole project, filtered.
+
+    Every number on the reports page was a dead end: you could read that a
+    third of the library has never been run and had no way to see which
+    third. Cases live under suites, so until now the only case list was
+    suite-scoped and a project-wide answer did not exist as a screen.
+
+    Each row carries how many runs it has appeared in, which is what makes
+    "never run" and "run constantly" separable when deciding what to prune.
+    """
+    suite_ids = select(Suite.id).where(
+        Suite.project_id == project_id).scalar_subquery()
+
+    where = [Case.suite_id.in_(suite_ids), Case.is_deleted.is_(False)]
+    if suite_id is not None:
+        where.append(Case.suite_id == suite_id)
+    if q:
+        where.append(Case.title.ilike(f"%{q}%"))
+    if type_id is not None:
+        where.append(Case.type_id == type_id)
+    if priority_id is not None:
+        where.append(Case.priority_id == priority_id)
+    if refs == "with":
+        where.append(and_(Case.refs.is_not(None), Case.refs != ""))
+    elif refs == "without":
+        where.append(or_(Case.refs.is_(None), Case.refs == ""))
+
+    # One grouped count over tests rather than a correlated subquery per row,
+    # and scoped to this project's runs: aggregating all 1,064,011 test rows
+    # to answer a question about one project's 4,468 cases cost 1.4s a page.
+    runs = (select(Test.case_id, func.count(func.distinct(Test.run_id))
+                   .label("runs"))
+            .join(Run, Test.run_id == Run.id)
+            .where(Run.project_id == project_id, Test.case_id.is_not(None))
+            .group_by(Test.case_id).subquery())
+
+    if executed == "yes":
+        where.append(runs.c.runs > 0)
+    elif executed == "no":
+        where.append(runs.c.runs.is_(None))
+
+    base = (select(Case, func.coalesce(runs.c.runs, 0).label("runs"),
+                   Suite.name.label("suite_name"))
+            .outerjoin(runs, runs.c.case_id == Case.id)
+            .join(Suite, Case.suite_id == Suite.id)
+            .where(*where))
+
+    order = {
+        "title": (Case.title,),
+        "runs": (func.coalesce(runs.c.runs, 0).desc(), Case.id),
+        "updated": (Case.updated_on.desc().nulls_last(),),
+        "id": (Case.id,),
+    }[sort]
+
+    total = session.scalar(
+        select(func.count()).select_from(base.subquery()))
+    rows = session.execute(
+        base.order_by(*order).offset(offset).limit(limit)).all()
+
+    return {
+        "total": total, "offset": offset, "limit": limit,
+        "items": [{
+            "id": case.id, "title": case.title,
+            "suite_id": case.suite_id, "suite_name": suite_name,
+            "section_id": case.section_id,
+            "type_id": case.type_id, "priority_id": case.priority_id,
+            "refs": case.refs, "updated_on": case.updated_on,
+            "runs": run_count,
+        } for case, run_count, suite_name in rows],
+    }
 
 
 @router.get("/cases/{case_id}", response_model=CaseOut)

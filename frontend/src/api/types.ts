@@ -422,6 +422,27 @@ export interface Catalog {
   field_options: Record<string, { value: number; label: string }[]>
 }
 
+export interface ExploredCase {
+  id: number
+  title: string
+  suite_id: number
+  suite_name: string
+  section_id: number
+  type_id: number | null
+  priority_id: number | null
+  refs: string | null
+  updated_on: string | null
+  /** how many runs this case has appeared in, within this project */
+  runs: number
+}
+
+export interface CaseExplorerPage {
+  total: number
+  offset: number
+  limit: number
+  items: ExploredCase[]
+}
+
 export interface RunSummary {
   run_id: number
   by_status: Record<string, number>
@@ -441,7 +462,8 @@ export interface TodoItem {
 
 export interface Distribution {
   title: string
-  buckets: { label: string; count: number }[]
+  /** id is the type or priority the bucket counts, so the bar can link */
+  buckets: { id: number | null; label: string; count: number }[]
   total: number
 }
 
@@ -449,7 +471,7 @@ export interface Coverage {
   cases: number
   with_refs: number
   executed: number
-  by_suite: { label: string; count: number }[]
+  by_suite: { id: number; label: string; count: number }[]
 }
 
 export interface DefectReport {
