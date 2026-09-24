@@ -1,0 +1,28 @@
+# --- gizli bilgiler --------------------------------------------------------
+.env
+.env.test
+*.pem
+*.key
+
+# --- veri ------------------------------------------------------------------
+# TestRail dokumu (1M+ JSON) ve ek dosyalari; depoya girmez
+data/
+backups/
+*.sql
+*.dump
+
+# --- derleme ciktilari -----------------------------------------------------
+node_modules/
+dist/
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# --- editor / isletim sistemi ----------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

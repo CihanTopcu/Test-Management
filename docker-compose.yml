@@ -1,0 +1,75 @@
+# On-prem deployment.
+#
+#   cp .env.example .env    # then edit the two passwords
+#   docker compose up -d --build
+#
+# Only the web port is published. Postgres and the API stay on the internal
+# network: the database of a test management system has no business being
+# reachable from the office LAN.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-testmgmt}
+      POSTGRES_USER: ${DB_USER:-tm}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD .env icinde tanimlanmali}
+      # Turkish collation, so case titles sort the way people expect
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=tr-TR --encoding=UTF8"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-tm} -d ${DB_NAME:-testmgmt}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    shm_size: 256mb
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - work_mem=32MB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - max_wal_size=4GB
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${DB_USER:-tm}:${DB_PASSWORD}@db:5432/${DB_NAME:-testmgmt}
+      STORAGE_DIR: /var/lib/testmgmt/attachments
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY .env icinde tanimlanmali}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-test-yonetimi@dgpays.com}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:-admin@dgpays.com}
+      BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-}
+    volumes:
+      - attachments:/var/lib/testmgmt/attachments
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db_data:
+  attachments:
