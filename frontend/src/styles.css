@@ -1,54 +1,64 @@
-/* Design system.
+/* Design system — DGPays.
+ *
+ * The palette, type and shape language come from the DGPays product design
+ * (Bakiye Transfer Onayı), so this tool looks like it belongs to the same
+ * company as the apps it tests. The density does not: that screen is a
+ * single 720px confirmation column, and the biggest run here holds 10,062
+ * rows. Brand travels, padding does not.
  *
  * The layout still follows TestRail so nobody has to relearn where things
- * are, but the surface treatment does not: hairline borders instead of grey
- * boxes, one accent colour, generous spacing, and type that steps clearly
- * from page title down to metadata. */
+ * are. */
+
+@import "/fonts/inter.css";
 
 :root {
-  /* neutrals */
-  --bg: #f7f8fa;
+  /* neutrals — the navy ramp from the product design */
+  --bg: #f6f8f9;
   --surface: #ffffff;
-  --surface-2: #f2f4f7;
-  --surface-3: #e9edf2;
-  --border: #e3e8ee;
-  --border-strong: #cfd6df;
+  --surface-2: #edf1f3;
+  --surface-3: #e2e5e7;
+  --border: #e2e5e7;
+  --border-strong: #cdd4d9;
 
-  --text: #16191d;
-  --text-dim: #566072;
-  --text-faint: #8b95a5;
+  --text: #12263f;
+  --text-dim: #536476;
+  --text-faint: #a9b7c2;
 
   /* brand */
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-soft: #eef0fe;
-  --accent-ring: rgba(79, 70, 229, 0.16);
+  --accent: #00a9ce;
+  --accent-hover: #0880ce;
+  --accent-soft: #f2fbfd;
+  --accent-ring: rgba(0, 169, 206, 0.18);
 
-  /* masthead */
-  --top: #14161c;
-  --top-2: #1d2029;
-  --top-text: #a8b1c2;
-  --top-strong: #ffffff;
+  /* masthead: light, as in the product design */
+  --top: #ffffff;
+  --top-2: #e2e5e7;
+  --top-text: #536476;
+  --top-strong: #12263f;
 
   /* status fallbacks; the real values come from the imported catalog */
-  --passed: #16a34a;
-  --failed: #e11d48;
-  --blocked: #64748b;
-  --retest: #f59e0b;
-  --untested: #cbd5e1;
+  --passed: #52c41a;
+  --failed: #f63e47;
+  --blocked: #7f92a3;
+  --retest: #f5a623;
+  --untested: #dfe4e8;
 
-  --danger: #e11d48;
+  --danger: #f63e47;
+  --danger-ink: #820014;
+  --danger-soft: #fdf2f4;
   --warn: #b45309;
-  --ok: #16a34a;
+  --ok: #52c41a;
 
   --radius: 12px;
-  --radius-sm: 8px;
+  --radius-sm: 10px;
   --radius-pill: 999px;
 
-  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
-  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08), 0 2px 4px rgba(16, 24, 40, 0.04);
-  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.14), 0 4px 8px rgba(16, 24, 40, 0.06);
+  /* the product design carries cards on one soft, wide shadow rather than a
+     border; at table density a hairline is still needed, so both are used */
+  --shadow-xs: 0 1px 2px rgba(18, 38, 63, 0.04);
+  --shadow: 0 4px 40px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 40px rgba(0, 0, 0, 0.09);
+  --shadow-lg: 0 4px 40px rgba(0, 0, 0, 0.18);
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, monospace;
@@ -57,22 +67,24 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0d0f13;
-    --surface: #15181e;
-    --surface-2: #1b1f27;
-    --surface-3: #232833;
-    --border: #262c36;
-    --border-strong: #333b48;
-    --text: #e8ecf2;
-    --text-dim: #a2adbe;
-    --text-faint: #6e7a8c;
-    --accent: #818cf8;
-    --accent-hover: #a5b0fb;
-    --accent-soft: #1e2140;
-    --accent-ring: rgba(129, 140, 248, 0.22);
-    --top: #0a0c10;
-    --top-2: #14171e;
-    --untested: #3f4856;
+    --bg: #0a1420;
+    --surface: #10202f;
+    --surface-2: #16293a;
+    --surface-3: #1e3547;
+    --border: #1f3648;
+    --border-strong: #2c4a61;
+    --text: #e6edf3;
+    --text-dim: #9fb3c4;
+    --text-faint: #6d8499;
+    --accent: #29c3e2;
+    --accent-hover: #5cd4ec;
+    --accent-soft: #0d2c38;
+    --accent-ring: rgba(41, 195, 226, 0.24);
+    --top: #0c1a28;
+    --top-2: #1f3648;
+    --untested: #2c4054;
+  --top-text: #9fb3c4;
+  --top-strong: #e6edf3;
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
     --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5);
@@ -82,22 +94,24 @@
 }
 
 :root[data-theme="dark"] {
-  --bg: #0d0f13;
-  --surface: #15181e;
-  --surface-2: #1b1f27;
-  --surface-3: #232833;
-  --border: #262c36;
-  --border-strong: #333b48;
-  --text: #e8ecf2;
-  --text-dim: #a2adbe;
-  --text-faint: #6e7a8c;
-  --accent: #818cf8;
-  --accent-hover: #a5b0fb;
-  --accent-soft: #1e2140;
-  --accent-ring: rgba(129, 140, 248, 0.22);
-  --top: #0a0c10;
-  --top-2: #14171e;
-  --untested: #3f4856;
+  --bg: #0a1420;
+  --surface: #10202f;
+  --surface-2: #16293a;
+  --surface-3: #1e3547;
+  --border: #1f3648;
+  --border-strong: #2c4a61;
+  --text: #e6edf3;
+  --text-dim: #9fb3c4;
+  --text-faint: #6d8499;
+  --accent: #29c3e2;
+  --accent-hover: #5cd4ec;
+  --accent-soft: #0d2c38;
+  --accent-ring: rgba(41, 195, 226, 0.24);
+  --top: #0c1a28;
+  --top-2: #1f3648;
+  --untested: #2c4054;
+  --top-text: #9fb3c4;
+  --top-strong: #e6edf3;
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5);
@@ -112,7 +126,9 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
+  /* Omnes is the DGPays brand face and is licensed per seat; it is named
+     first so an installed copy is used, with the shipped Inter behind it. */
+  font-family: Omnes, Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
                Inter, Roboto, sans-serif;
   font-size: 13.5px;
   line-height: 1.55;
@@ -195,8 +211,10 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 14px;
-  height: 52px;
+  padding: 0 20px;
+  /* the product design uses 72px; a tool that shows 200 rows at a time gets
+     a shorter bar, close enough to read as the same family */
+  height: 56px;
   border-bottom: 1px solid var(--top-2);
 }
 .masthead .brand {
@@ -210,36 +228,48 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); }
   white-space: nowrap;
 }
 .masthead .brand { text-decoration: none; }
-.masthead .brand:hover .logotype .word { color: #fff; }
+.masthead .brand:hover .logotype .word { color: var(--accent); }
 .masthead .spacer { flex: 1; }
-.masthead .who { color: var(--top-text); font-size: 12.5px; white-space: nowrap; }
+.masthead .who {
+  color: var(--top-text); font-size: 13px; white-space: nowrap;
+  text-decoration: none; font-weight: 500;
+  padding: 7px 10px; border-radius: var(--radius);
+}
+a.masthead-link:hover, .masthead .who:hover {
+  background: var(--surface-2); color: var(--top-strong);
+}
 .masthead button.ghost { color: var(--top-text); }
-.masthead button.ghost:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.masthead button.ghost:hover { background: var(--surface-2); color: var(--top-strong); }
 
 .masthead select.project {
-  width: auto; min-width: 180px;
-  background: var(--top-2);
-  border-color: rgba(255, 255, 255, 0.1);
+  width: auto; min-width: 190px;
+  background: var(--surface);
+  border-color: var(--border);
   color: var(--top-strong);
-  border-radius: var(--radius-pill);
-  padding: 6px 12px;
-  font-weight: 500;
+  border-radius: var(--radius);
+  padding: 7px 12px;
+  font-weight: 600;
 }
+.masthead select.project:hover { border-color: var(--border-strong); }
 
 /* search in the masthead */
 .omnibox { position: relative; width: 340px; }
 .omnibox input {
-  background: var(--top-2);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: var(--surface-2);
+  border-color: transparent;
   color: var(--top-strong);
-  border-radius: var(--radius-pill);
-  padding: 7px 14px 7px 34px;
+  border-radius: var(--radius);
+  padding: 8px 14px 8px 34px;
 }
-.omnibox input::placeholder { color: rgba(255, 255, 255, 0.4); }
-.omnibox input:focus { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12); }
+.omnibox input::placeholder { color: var(--text-faint); }
+.omnibox input:focus {
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
 .omnibox > .icon {
   position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
-  color: rgba(255, 255, 255, 0.45); pointer-events: none;
+  color: var(--text-faint); pointer-events: none;
 }
 .omnibox .results {
   position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 40;
@@ -274,7 +304,8 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); }
 }
 .rail .proj .chip {
   width: 28px; height: 28px; border-radius: 9px; flex: none;
-  background: linear-gradient(135deg, var(--accent), #8b5cf6);
+  /* the gradient the product design uses on its card faces */
+  background: linear-gradient(135deg, #092c4c 0%, #0e4e6e 55%, #12809e 100%);
   color: #fff; display: grid; place-items: center;
   font-size: 12px; font-weight: 700;
 }
@@ -844,7 +875,9 @@ kbd {
    sits in: light on the masthead, accent on a white page. */
 .logotype {
   display: inline-flex; align-items: baseline; gap: 8px;
-  color: var(--brand-on-dark, #a5a0ff);
+  /* the mark takes the accent; on the dark sign-in page a lighter tone is
+     set on .wordmark below */
+  color: var(--accent);
 }
 .logotype svg { align-self: center; flex-shrink: 0; }
 .logotype .word {
@@ -856,4 +889,5 @@ kbd {
   color: var(--top-text); opacity: 0.85;
 }
 /* on the sign-in card the page is dark, so the mark keeps its light tone */
+.wordmark .logotype { color: #5cd4ec; }
 .wordmark .logotype .word { color: #fff; }
