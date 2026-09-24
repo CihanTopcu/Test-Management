@@ -215,6 +215,18 @@ atlamak yerine açılır açılmaz göndermesidir.
 İçinde bildirilecek bir şey olmayan rapor gönderilmez — pencere yine ilerler,
 yani bir sonraki rapor kimseye söylenmemiş bir dönemi tekrar taramaz.
 
+### Kim ne üretti
+
+Tüm Projeler sayfasının altındaki tablo, hangi hesabın ne kadar sonuç
+girdiğini, case yazdığını ve düzenlediğini alan alan gösterir. Taşınan
+veride hesapların çoğu paylaşımlı takım girişidir, bu yüzden tablo kişiyi
+değil **alanı** ölçer; bir hesabın robot mu insan mı olduğunu ayıran tek
+işaret **yazım payı**dır.
+
+Eşitleme, değişen case'lerin düzenleme geçmişini de çeker
+(`get_history_for_case`); bu olmadan case yeni değerleriyle gelir ama kimin
+değiştirdiği kaybolur.
+
 ## 10. İstek sınırı
 
 Giriş denemeleri (dakikada 10) ve otomasyon yazmaları (dakikada 600 sonuç)

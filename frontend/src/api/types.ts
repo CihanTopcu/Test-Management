@@ -188,6 +188,33 @@ export interface SyncStatusOut {
   runs: SyncRun[]
 }
 
+export interface UserActivity {
+  user_id: number
+  name: string
+  email: string | null
+  is_active: boolean
+  results: number
+  cases_created: number
+  cases_edited: number
+  runs_created: number
+  total: number
+  authoring_share: number
+  projects: { project: string; results: number }[]
+}
+
+export interface ActivityByUserOut {
+  days: number
+  since: string
+  totals: {
+    results: number
+    cases_created: number
+    cases_edited: number
+    runs_created: number
+    accounts: number
+  }
+  items: UserActivity[]
+}
+
 export interface AuditEntry {
   id: number
   created_on: string

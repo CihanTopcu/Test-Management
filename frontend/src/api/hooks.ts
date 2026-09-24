@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
-  ActivityItem, AdminSummary, Attachment, AuditPage, AutomationBacklog,
+  ActivityByUserOut, ActivityItem, AdminSummary, Attachment, AuditPage,
+  AutomationBacklog,
   CasePage, Catalog, Coverage, CustomField, DashboardOut, DefectReport,
   DigestPreview, Distribution, DuplicateGroup, FlakyCase, HistoryEntry,
   Milestone, NeverRunCase, NotificationPreference, Project, ProjectMember,
@@ -236,6 +237,19 @@ export const useAutomationBacklog = (projectId?: number) =>
       `/api/projects/${projectId}/reports/automation-backlog?limit=100`),
     enabled: !!projectId,
     staleTime: 5 * 60 * 1000,
+  })
+
+/** Who produced what, by account. Aggregates 1.09M results; keep it. */
+export const useActivityByUser = (days: number, projectId?: number) =>
+  useQuery({
+    queryKey: ['activity-by-user', days, projectId],
+    queryFn: () => {
+      const query = new URLSearchParams({ days: String(days) })
+      if (projectId) query.set('project_id', String(projectId))
+      return api.get<ActivityByUserOut>(`/api/activity-by-user?${query}`)
+    },
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
   })
 
 /** TestRail sync health; refreshed while the admin page is open. */

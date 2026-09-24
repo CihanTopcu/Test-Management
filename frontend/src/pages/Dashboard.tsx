@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useDashboard } from '../api/hooks'
+import { ActivityByUser } from '../components/ActivityByUser'
 import { Icon } from '../components/Icon'
 import { MiniBar } from '../components/Status'
 import { useCatalog } from '../api/hooks'
@@ -155,6 +156,8 @@ export function Dashboard() {
       <div className="faint small" style={{ marginTop: 10 }}>
         Sayılar arşivlenmiş koşumları içermez.
       </div>
+
+      <ActivityByUser />
     </main>
   )
 }

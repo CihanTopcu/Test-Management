@@ -241,3 +241,96 @@ def test_manual_cases_that_never_ran_are_explained_not_hidden(
                             headers=admin).json()
     assert report["items"] == []
     assert "hiçbiri bir koşuma girmemiş" in report["detail"]
+
+
+# ---- activity attribution ---------------------------------------------------
+
+def test_activity_separates_result_posting_from_authoring(
+        app_client, admin, project, suite, make_case):
+    """The only honest robot-versus-human signal in this data is the mix.
+
+    Five of the six accounts in the migrated instance are shared team logins,
+    so the report cannot measure people. What it can measure is whether an
+    account writes cases or only posts results.
+    """
+    make_case("Yazilan case")
+    run = _run_with(app_client, admin, project, suite, "Etkinlik koşumu")
+    test_id = app_client.get(f"/api/runs/{run['id']}/tests",
+                             headers=admin).json()["items"][0]["id"]
+    for _ in range(4):
+        app_client.post(f"/api/tests/{test_id}/results", headers=admin,
+                        json={"status_id": 1})
+    app_client.patch(f"/api/cases/{_case_id(app_client, admin, suite)}",
+                     headers=admin, json={"title": "Duzenlendi"})
+
+    # scoped to this project: the endpoint is instance-wide, and the suite
+    # shares a session with every other test in the file
+    report = app_client.get(
+        f"/api/activity-by-user?days=30&project_id={project['id']}",
+        headers=admin).json()
+    mine = next(i for i in report["items"]
+                if i["email"] == "admin@test.local")
+
+    assert mine["results"] == 4
+    assert mine["cases_created"] >= 1
+    assert mine["cases_edited"] >= 1
+    assert mine["runs_created"] >= 1
+    assert 0 < mine["authoring_share"] < 100
+    assert mine["projects"][0]["project"] == project["name"]
+
+
+def _case_id(app_client, admin, suite):
+    listing = app_client.get(f"/api/suites/{suite['id']}/cases",
+                             headers=admin).json()
+    return listing["items"][0]["id"]
+
+
+def test_an_account_that_only_posts_results_reads_as_a_pipeline(
+        app_client, admin, project, suite, make_case):
+    make_case("Boru hatti case")
+    run = _run_with(app_client, admin, project, suite, "Otomasyon koşumu")
+    test_id = app_client.get(f"/api/runs/{run['id']}/tests",
+                             headers=admin).json()["items"][0]["id"]
+
+    roles = app_client.get("/api/admin/roles", headers=admin).json()["roles"]
+    tester = next(r for r in roles if r["name"] == "Tester")
+    app_client.post("/api/admin/users", headers=admin, json={
+        "name": "CI", "email": "ci@test.local", "password": "ci-parola-1234",
+        "role_id": tester["id"], "is_active": True})
+    token = app_client.post("/api/auth/token", data={
+        "username": "ci@test.local", "password": "ci-parola-1234"}).json()
+    ci = {"Authorization": f"Bearer {token['access_token']}"}
+
+    for _ in range(5):
+        app_client.post(f"/api/tests/{test_id}/results", headers=ci,
+                        json={"status_id": 1})
+
+    report = app_client.get(
+        f"/api/activity-by-user?days=30&project_id={project['id']}",
+        headers=admin).json()
+    pipeline = next(i for i in report["items"] if i["email"] == "ci@test.local")
+    assert pipeline["results"] == 5
+    assert pipeline["authoring_share"] == 0
+
+
+def test_the_window_bounds_the_activity(app_client, admin, project, suite,
+                                        make_case, db):
+    from sqlalchemy import text
+
+    make_case("Pencere disi")
+    run = _run_with(app_client, admin, project, suite, "Eski koşum")
+    test_id = app_client.get(f"/api/runs/{run['id']}/tests",
+                             headers=admin).json()["items"][0]["id"]
+    app_client.post(f"/api/tests/{test_id}/results", headers=admin,
+                    json={"status_id": 1})
+
+    url_ = f"/api/activity-by-user?days=30&project_id={project['id']}"
+    before = app_client.get(url_, headers=admin).json()["totals"]["results"]
+    assert before >= 1
+
+    db.execute(text("UPDATE results SET created_on = now() - interval '200 days'"
+                    " WHERE test_id = :t"), {"t": test_id})
+    db.commit()
+
+    after = app_client.get(url_, headers=admin).json()["totals"]["results"]
+    assert after == before - 1

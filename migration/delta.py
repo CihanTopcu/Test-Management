@@ -75,8 +75,9 @@ def dump_delta(t: TestRail, since: int, only: int | None = None) -> dict:
     if only:
         projects = [p for p in projects if p["id"] == only]
 
-    manifest = {"suites": [], "runs": [], "projects": [],
-                "cases": 0, "runs_touched": 0, "results": 0, "milestones": 0}
+    manifest = {"suites": [], "runs": [], "projects": [], "changed_cases": [],
+                "cases": 0, "runs_touched": 0, "results": 0, "milestones": 0,
+                "history": 0}
 
     for p in projects:
         pid, pname = p["id"], p["name"]
@@ -100,6 +101,16 @@ def dump_delta(t: TestRail, since: int, only: int | None = None) -> dict:
             manifest["suites"].append(sid)
             manifest["cases"] += len(changed)
             touched_here = True
+
+            # Who changed what. Without this the case arrives with its new
+            # values and no record of the edit, which is the one thing the
+            # activity report cannot reconstruct afterwards.
+            for case in changed:
+                cid = case["id"]
+                entries = t.all(f"get_history_for_case/{cid}", "history")
+                save(f"history/case_{cid}.json", entries)
+                manifest["changed_cases"].append(cid)
+                manifest["history"] += len(entries)
 
         # --- milestones and plans: small, always refreshed -----------------
         milestones = t.all(f"get_milestones/{pid}", "milestones")
@@ -155,7 +166,7 @@ def dump_delta(t: TestRail, since: int, only: int | None = None) -> dict:
     manifest["taken_at"] = datetime.now(timezone.utc).isoformat()
     save("delta/manifest.json", manifest)
     log(f"DELTA: case={manifest['cases']} kosum={manifest['runs_touched']} "
-        f"sonuc={manifest['results']}")
+        f"sonuc={manifest['results']} gecmis={manifest['history']}")
     return manifest
 
 
@@ -196,11 +207,15 @@ def load_delta(manifest: dict | None = None) -> dict:
             session, only_suites=set(manifest.get("suites") or []))
         execution = loader.load_execution(
             session, only_runs=set(manifest.get("runs") or []))
+        # after the cases exist, so history has something to attach to
+        loader.load_history(
+            session, only_cases=set(manifest.get("changed_cases") or []))
         loader.fix_sequences(session)
 
     return {"loaded_cases": structure.get("cases", 0),
             "loaded_tests": execution.get("tests", 0),
-            "loaded_results": execution.get("results", 0)}
+            "loaded_results": execution.get("results", 0),
+            "loaded_history": manifest.get("history", 0)}
 
 
 def report(t: TestRail):

@@ -679,12 +679,22 @@ def load_attachments(session):
         log(f"  indirilemeyen    {len(missing)} (data/raw/attachments_failed.json)")
 
 
-def load_history(session):
+def load_history(session, only_cases: set[int] | None = None):
+    """Load case edit history.
+
+    `only_cases` narrows the pass to the cases a sync refreshed; the full
+    pass globs 65,227 files, which a weekly sync has no reason to do.
+    """
     log("== case gecmisi ==")
-    files = glob.glob(os.path.join(RAW, "history", "case_*.json"))
+    if only_cases is not None:
+        files = [os.path.join(RAW, "history", f"case_{cid}.json")
+                 for cid in sorted(only_cases)]
+        files = [f for f in files if os.path.exists(f)]
+    else:
+        files = glob.glob(os.path.join(RAW, "history", "case_*.json"))
     if not files:
         log("  gecmis dosyasi yok - once 'dump.py history' calistirin")
-        return
+        return {"entries": 0}
 
     known = set(session.execute(select(models.Case.id)).scalars())
     rows, skipped = [], 0
@@ -711,6 +721,7 @@ def load_history(session):
     total = upsert(session, models.CaseHistory, rows) if rows else 0
     count = session.scalar(select(func.count()).select_from(models.CaseHistory))
     log(f"  case_history     {count} (son parti {total}, atlanan case {skipped})")
+    return {"entries": count}
 
 
 # --- finishing up ----------------------------------------------------------
