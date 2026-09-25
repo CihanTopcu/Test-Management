@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   useBulkStatus, useCases, useCatalog, useDeleteRun, useProjectStats,
-  useRunMembership, useRunSummary, useRuns, useSections, useTests, useUsers,
+  useRunMembership, useRunPages, useRunSummary, useRuns, useSections, useTests, useUsers,
 } from '../api/hooks'
 import { AddRunDialog } from '../components/AddDialogs'
 import { Confirm } from '../components/Confirm'
@@ -11,13 +11,17 @@ import { Icon } from '../components/Icon'
 import { Donut, Legend, MiniBar, slices } from '../components/Status'
 import { TestPanel } from '../components/TestPanel'
 import { href, type Route } from '../route'
+import { Crumbs } from '../components/Crumbs'
+import { MoreMenu } from '../components/MoreMenu'
 
 /** Run index: grouped by day, the way TestRail lists them. */
 function RunList({ route, projectName }: { route: Route; projectName: string }) {
   const [archived, setArchived] = useState(false)
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
-  const { data: runs = [], isLoading, isFetching } = useRuns(route.project, archived, query)
+  const pages = useRunPages(route.project, archived, query)
+  const { isLoading, isFetching } = pages
+  const runs = useMemo(() => pages.data?.pages.flat() ?? [], [pages.data])
   const { data: stats } = useProjectStats(route.project)
   const { data: catalog } = useCatalog()
   const [adding, setAdding] = useState(false)
@@ -41,17 +45,24 @@ function RunList({ route, projectName }: { route: Route; projectName: string }) 
     return out
   }, [runs])
 
+  // the tab's total, so a partly loaded list says how much is still unseen
+  const tabTotal = stats && !query
+    ? (archived ? stats.archived_runs : stats.runs - stats.archived_runs) : null
+  const shownLabel = tabTotal !== null && runs.length < tabTotal
+    ? `${runs.length.toLocaleString('tr-TR')} / ${tabTotal.toLocaleString('tr-TR')} koşum gösteriliyor`
+    : `${runs.length.toLocaleString('tr-TR')} koşum`
+
   if (isLoading) {
     return <main className="main"><div className="skeleton" style={{ width: 280 }} /></main>
   }
 
   return (
     <main className="main">
-      <div className="crumbs"><b>{projectName}</b></div>
+      <Crumbs projectId={route.project} projectName={projectName} />
       <div className="page-title">
         <h1>Test Koşumları ve Sonuçları</h1>
         <span className="faint small">
-          {isFetching ? 'yükleniyor…' : `${runs.length} koşum`}
+          {isFetching && !pages.isFetchingNextPage ? 'yükleniyor…' : shownLabel}
         </span>
         <button className="primary right" onClick={() => setAdding(true)}>
           <Icon name="plus" size={14} /> Koşum ekle
@@ -129,6 +140,15 @@ function RunList({ route, projectName }: { route: Route; projectName: string }) 
               </table>
             </div>
           ))}
+        </div>
+      )}
+
+      {pages.hasNextPage && (
+        <div className="loadmore">
+          <button onClick={() => pages.fetchNextPage()}
+                  disabled={pages.isFetchingNextPage}>
+            {pages.isFetchingNextPage ? 'Yükleniyor…' : 'Daha eski koşumları yükle'}
+          </button>
         </div>
       )}
     </main>
@@ -211,12 +231,9 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
 
   return (
     <main className="main">
-      <div className="crumbs">
-        <b>{projectName}</b>
-        {' › '}
-        <a href={href({ page: 'runs', project: route.project })}>Test Koşumları</a>
-        {run && <> › {run.name}</>}
-      </div>
+      <Crumbs projectId={route.project} projectName={projectName} trail={[
+        { label: 'Test Koşumları', href: href({ page: 'runs', project: route.project }) },
+      ]} />
 
       <div className="page-title">
         <span className="idbadge run">R{route.run}</span>
@@ -230,9 +247,10 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
             <button onClick={() => { setAddPicked(new Set()); setAdding(true) }}>
               <Icon name="plus" size={13} /> Case ekle
             </button>
-            <button className="ghost danger" onClick={() => setDeleting(true)}>
-              <Icon name="trash" size={13} /> Koşumu sil
-            </button>
+            <MoreMenu items={[
+              { label: 'Koşumu sil', icon: 'trash', danger: true,
+                onClick: () => setDeleting(true) },
+            ]} />
           </div>
         )}
       </div>
@@ -280,8 +298,10 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
             <Donut data={data} size={140} />
             <div className="pass-big">
               <div className="n">{pct}%</div>
-              <div className="k">passed</div>
-              <div className="k">{untested} / {total} untested</div>
+              <div className="k">geçti</div>
+              <div className="k">
+                {(total - untested).toLocaleString('tr-TR')} / {total.toLocaleString('tr-TR')} sonuçlandı
+              </div>
             </div>
             <div style={{ flex: 1, minWidth: 260 }}>
               <Legend data={data} total={total} active={filter}

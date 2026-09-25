@@ -27,43 +27,59 @@ export function Login({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="signin">
-      <div className="signin-inner">
-        <div className="wordmark">
-          <Logo size={26} subtitle={false} />
-        </div>
+      <header className="signin-top">
+        <Logo size={30} />
+      </header>
+
+      <div className="signin-body">
+        {/* the site's hero, cut down to what someone signing in needs to
+            know: where they are, and what lives here */}
+        <section className="signin-hero">
+          <div className="eyebrow">DGPays · Yazılım Test Yönetimi</div>
+          <h1>
+            <span className="grad">Her sürümü</span><br />
+            kanıtıyla yayına alın
+          </h1>
+          <p>
+            Test case’leri, koşumlar, milestone’lar ve raporlar tek yerde.
+            Beş yıllık TestRail geçmişi burada, kaldığı yerden devam ediyor.
+          </p>
+          <div className="pills">
+            <span>Test Case’ler</span>
+            <span>Koşumlar</span>
+            <span>Raporlar</span>
+          </div>
+        </section>
 
         <form className="signin-card" onSubmit={submit}>
-          {/* the name is already on the wordmark above; repeating it here
-              wastes the line that should say what to do next */}
-          <h1>Hesabınıza giriş yapın</h1>
-          <h2>DGPays test yönetim sistemi</h2>
+          <div className="eyebrow">Giriş</div>
+          <h2>Hesabınıza giriş yapın</h2>
 
-          <label className="float">
-            <input type="email" value={email} required autoFocus
-                   placeholder=" " autoComplete="username"
-                   onChange={(e) => setEmail(e.target.value)} />
+          <label className="field">
             <span>E-posta</span>
+            <input type="email" value={email} required autoFocus
+                   autoComplete="username" placeholder="ad.soyad@dgpays.com"
+                   onChange={(e) => setEmail(e.target.value)} />
           </label>
 
-          <label className="float">
-            <input type="password" value={password} required
-                   placeholder=" " autoComplete="current-password"
-                   onChange={(e) => setPassword(e.target.value)} />
+          <label className="field">
             <span>Parola</span>
+            <input type="password" value={password} required
+                   autoComplete="current-password"
+                   onChange={(e) => setPassword(e.target.value)} />
           </label>
 
-          <div className="row small" style={{ justifyContent: 'flex-end', marginTop: -6 }}>
+          <div className="signin-row">
+            <label className="check">
+              <input type="checkbox" checked={remember}
+                     onChange={(e) => setRemember(e.target.checked)} />
+              Oturumum açık kalsın
+            </label>
             <a href="#" onClick={(e) => {
               e.preventDefault()
               setError('Parolanızı sıfırlamak için sistem yöneticinize başvurun.')
-            }}>Parolanızı mı unuttunuz?</a>
+            }}>Parolamı unuttum</a>
           </div>
-
-          <label className="check">
-            <input type="checkbox" checked={remember}
-                   onChange={(e) => setRemember(e.target.checked)} />
-            Oturumum açık kalsın
-          </label>
 
           {error && <div className="error">{error}</div>}
 
@@ -71,9 +87,12 @@ export function Login({ onDone }: { onDone: () => void }) {
             {busy ? 'Giriş yapılıyor…' : 'Giriş yap'}
           </button>
         </form>
-
-        <div className="version">{VERSION}</div>
       </div>
+
+      <footer className="signin-foot">
+        <span>DGPays</span>
+        <span>{VERSION}</span>
+      </footer>
     </div>
   )
 }

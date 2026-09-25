@@ -33,7 +33,7 @@ export function Overview({ route, projectName }: { route: Route; projectName: st
         {[
           { n: stats.suites, k: 'test suite' },
           { n: stats.cases, k: 'test case' },
-          { n: stats.runs, k: `koşum (${stats.active_runs} açık)` },
+          { n: stats.runs, k: `koşum (${stats.active_runs} devam eden)` },
           { n: stats.milestones, k: `milestone (${stats.open_milestones} açık)` },
         ].map((t) => (
           <div className="panel tile" key={t.k}>
@@ -51,9 +51,9 @@ export function Overview({ route, projectName }: { route: Route; projectName: st
             <Donut data={data} />
             <div className="pass-big">
               <div className="n">{pct}%</div>
-              <div className="k">passed</div>
+              <div className="k">geçti</div>
               <div className="k">
-                {untested.toLocaleString('tr-TR')} / {stats.tests.toLocaleString('tr-TR')} untested
+                {(stats.tests - untested).toLocaleString('tr-TR')} / {stats.tests.toLocaleString('tr-TR')} sonuçlandı
               </div>
             </div>
             <div style={{ flex: 1, minWidth: 260 }}>
@@ -68,7 +68,9 @@ export function Overview({ route, projectName }: { route: Route; projectName: st
           <div className="section-rule">Son aktivite</div>
           <div className="panel">
             {activity.length === 0 && <div className="empty">Kayıtlı sonuç yok.</div>}
-            <table>
+            {/* fixed layout: some accounts are whole team names, and a
+                nowrap cell that long squeezed the test title to one word */}
+            <table className="grid">
               <tbody>
                 {activity.map((a) => (
                   <tr key={`${a.test_id}-${a.created_on}`}
@@ -80,7 +82,8 @@ export function Overview({ route, projectName }: { route: Route; projectName: st
                       {a.test_title}
                       <div className="small faint">{a.run_name}</div>
                     </td>
-                    <td className="small faint nowrap" style={{ width: 150 }}>
+                    <td className="small faint ellipsis" style={{ width: 170 }}
+                        title={users.find((u) => u.id === a.created_by)?.name}>
                       {users.find((u) => u.id === a.created_by)?.name ?? '—'}
                       <div>{new Date(a.created_on).toLocaleDateString('tr-TR')}</div>
                     </td>

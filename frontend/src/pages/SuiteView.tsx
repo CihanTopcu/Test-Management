@@ -12,6 +12,8 @@ import { ImportDialog } from '../components/ImportDialog'
 import { SectionTree } from '../components/SectionTree'
 import type { CaseSummary, SectionNode } from '../api/types'
 import { href, type Route } from '../route'
+import { Crumbs } from '../components/Crumbs'
+import { MoreMenu } from '../components/MoreMenu'
 
 const PAGE = 250
 
@@ -182,17 +184,13 @@ export function SuiteView({ route, projectName }: { route: Route; projectName: s
       </aside>
 
       <main className="main">
-        <div className="crumbs">
-          <b>{projectName}</b>
-          <Icon name="chevron-right" size={12} />
-          <a href={href({ page: 'suites', project: route.project })}>Test Suite’leri</a>
-          {suite && <><Icon name="chevron-right" size={12} />{suite.name}</>}
-          {route.section && sectionIndex.get(route.section) && (
-            <><Icon name="chevron-right" size={12} />
-              {[sectionIndex.get(route.section)!.path,
-                sectionIndex.get(route.section)!.name].filter(Boolean).join(' › ')}</>
-          )}
-        </div>
+        {/* inside a section the suite itself becomes a parent, and the
+            open section is the one highlighted in the tree beside this */}
+        <Crumbs projectId={route.project} projectName={projectName} trail={[
+          { label: 'Test Suite’leri', href: href({ page: 'suites', project: route.project }) },
+          ...(route.section && suite ? [{ label: suite.name,
+            href: href({ page: 'suites', project: route.project, suite: suite.id }) }] : []),
+        ]} />
 
         <div className="page-title">
           <span className="idbadge">S{route.suite}</span>
@@ -201,16 +199,6 @@ export function SuiteView({ route, projectName }: { route: Route; projectName: s
             {isFetching ? 'yükleniyor…' : `${total.toLocaleString('tr-TR')} case`}
           </span>
           <div className="right">
-            <button className="ghost icon-only" title="Suite adını değiştir"
-                    onClick={() => {
-                      setRenameText(suite?.name ?? ''); setRenaming('suite')
-                    }}>
-              <Icon name="edit" size={14} />
-            </button>
-            <button className="ghost icon-only danger" title="Suite'i sil"
-                    onClick={() => setDeleting('suite')}>
-              <Icon name="trash" size={14} />
-            </button>
             <button className="ghost" onClick={exportCsv} title="CSV indir">
               <Icon name="download" size={14} /> CSV
             </button>
@@ -223,6 +211,12 @@ export function SuiteView({ route, projectName }: { route: Route; projectName: s
             <button className="primary" onClick={() => setAddingCase(true)}>
               <Icon name="plus" size={14} /> Case ekle
             </button>
+            <MoreMenu items={[
+              { label: 'Suite adını değiştir', icon: 'edit', onClick: () => {
+                  setRenameText(suite?.name ?? ''); setRenaming('suite') } },
+              { label: 'Suite’i sil', icon: 'trash', danger: true,
+                onClick: () => setDeleting('suite') },
+            ]} />
           </div>
         </div>
 

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useDashboard } from '../api/hooks'
 import { ActivityByUser } from '../components/ActivityByUser'
 import { Icon } from '../components/Icon'
-import { MiniBar } from '../components/Status'
+import { MiniBar, statusColor } from '../components/Status'
 import { useCatalog } from '../api/hooks'
 import { href } from '../route'
 
@@ -53,7 +53,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="cards" style={{ marginBottom: 16 }}>
+      <div className="cards six" style={{ marginBottom: 16 }}>
         {[
           { n: data.totals.projects, k: 'proje' },
           { n: data.totals.cases, k: 'test case' },
@@ -72,6 +72,13 @@ export function Dashboard() {
         ))}
       </div>
 
+      <div className="barkey">
+        <span className="eyebrow">Durum çubuğu</span>
+        <span><i style={{ background: statusColor(catalog, 1) }} />geçti</span>
+        <span><i style={{ background: statusColor(catalog, 5) }} />kaldı</span>
+        <span><i style={{ background: statusColor(catalog, 4) }} />diğer sonuç</span>
+        <span><i style={{ background: statusColor(catalog, 3) }} />sonuçsuz</span>
+      </div>
       <div className="panel" style={{ overflow: 'auto' }}>
         <table>
           <thead>
@@ -130,6 +137,9 @@ export function Dashboard() {
                     <MiniBar catalog={catalog} run={{
                       test_count: p.tests,
                       passed_count: p.passed,
+                      // without it every failure fell into the amber "other"
+                      // slice, and a red project looked merely unfinished
+                      failed_count: p.failed,
                       untested_count: p.untested,
                     }} />
                   )}

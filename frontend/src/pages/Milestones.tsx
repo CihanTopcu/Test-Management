@@ -5,6 +5,7 @@ import { Icon } from '../components/Icon'
 import { MiniBar } from '../components/Status'
 import type { Milestone, Run } from '../api/types'
 import { href, type Route } from '../route'
+import { Crumbs } from '../components/Crumbs'
 
 function fmt(value?: string | null) {
   if (!value) return null
@@ -115,7 +116,7 @@ export function Milestones({ route, projectName }: { route: Route; projectName: 
 
   return (
     <main className="main">
-      <div className="crumbs"><b>{projectName}</b></div>
+      <Crumbs projectId={route.project} projectName={projectName} />
       <div className="page-title">
         <h1>Milestone’lar</h1>
         <span className="faint small">

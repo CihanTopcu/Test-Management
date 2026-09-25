@@ -1,122 +1,130 @@
-/* Design system — DGPays.
+/* Design system — DGTest, in the dgpays.com language.
  *
- * The palette, type and shape language come from the DGPays product design
- * (Bakiye Transfer Onayı), so this tool looks like it belongs to the same
- * company as the apps it tests. The density does not: that screen is a
- * single 720px confirmation column, and the biggest run here holds 10,062
- * rows. Brand travels, padding does not.
+ * Palette, type and shapes follow the company site: a near-black navy, the
+ * blue → cyan → teal gradient of the DGPays mark, Sora for headings,
+ * Instrument Sans for text and IBM Plex Mono for the small uppercase
+ * eyebrows. The site is dark, so this tool is dark by default; the light
+ * theme is the same palette on paper, one toggle away.
+ *
+ * The density is the tool's own: the site is a marketing page, and the
+ * biggest run here holds 10,062 rows. Brand travels, padding does not.
  *
  * The layout still follows TestRail so nobody has to relearn where things
  * are. */
 
+@import "/fonts/brand.css";
 @import "/fonts/inter.css";
 
 :root {
-  /* neutrals — the navy ramp from the product design */
-  --bg: #f6f8f9;
-  --surface: #ffffff;
-  --surface-2: #edf1f3;
-  --surface-3: #e2e5e7;
-  --border: #e2e5e7;
-  --border-strong: #cdd4d9;
+  /* neutrals — the navy of dgpays.com */
+  --bg: #05070d;
+  --surface: #0b0e17;
+  --surface-2: #10141f;
+  --surface-3: #181d2b;
+  --border: #1a2030;
+  --border-strong: #283044;
 
-  --text: #12263f;
-  --text-dim: #536476;
-  --text-faint: #a9b7c2;
+  --text: #e8f0ff;
+  --text-dim: #a9b2c6;
+  --text-faint: #7d879d;
 
-  /* brand */
-  --accent: #00a9ce;
-  --accent-hover: #0880ce;
-  --accent-soft: #f2fbfd;
-  --accent-ring: rgba(0, 169, 206, 0.18);
+  /* brand: the three stops of the DGPays mark */
+  --brand-blue: #0466ff;
+  --brand-cyan: #00a0ec;
+  --brand-teal: #1ee7c5;
+  --brand-gradient: linear-gradient(90deg, #0466ff 0%, #00a0ec 55%, #1ee7c5 100%);
+  --button-gradient: linear-gradient(92deg, #0466ff, #00a0ec);
 
-  /* masthead: light, as in the product design */
-  --top: #ffffff;
-  --top-2: #e2e5e7;
-  --top-text: #536476;
-  --top-strong: #12263f;
+  --accent: #00a0ec;
+  --accent-hover: #33b5f0;
+  --accent-soft: #0a1d33;
+  --accent-ring: rgba(0, 160, 236, 0.3);
+  /* the teal of the site's eyebrow labels */
+  --eyebrow: #1ee7c5;
+
+  /* masthead */
+  --top: #05070d;
+  --top-2: #1a2030;
+  --top-text: #a9b2c6;
+  --top-strong: #ffffff;
 
   /* status fallbacks; the real values come from the imported catalog */
   --passed: #52c41a;
-  --failed: #f63e47;
+  --failed: #f5566e;
   --blocked: #7f92a3;
   --retest: #f5a623;
-  --untested: #dfe4e8;
+  --untested: #283044;
 
-  --danger: #f63e47;
-  --danger-ink: #820014;
-  --danger-soft: #fdf2f4;
-  --warn: #b45309;
+  --danger: #f5566e;
+  --danger-ink: #ffb3bf;
+  --danger-soft: #2a0f17;
+  --warn: #f5b453;
   --ok: #52c41a;
 
-  --radius: 12px;
+  --radius: 14px;
   --radius-sm: 10px;
   --radius-pill: 999px;
 
-  /* the product design carries cards on one soft, wide shadow rather than a
-     border; at table density a hairline is still needed, so both are used */
-  --shadow-xs: 0 1px 2px rgba(18, 38, 63, 0.04);
-  --shadow: 0 4px 40px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 40px rgba(0, 0, 0, 0.09);
-  --shadow-lg: 0 4px 40px rgba(0, 0, 0, 0.18);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, monospace;
+  --display: Sora, "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --sans: "Instrument Sans", Inter, "Segoe UI Variable Text", "Segoe UI",
+          system-ui, -apple-system, Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --surface-2: #eef2f8;
+  --surface-3: #e3e8f1;
+  --border: #e3e8f1;
+  --border-strong: #cbd3e1;
+
+  --text: #0a0f1e;
+  --text-dim: #4b5670;
+  --text-faint: #5f6984;
+
+  /* cyan on white is too faint for text, so light mode leads with the blue */
+  --accent: #0466ff;
+  --accent-hover: #0052d4;
+  --accent-soft: #eaf2ff;
+  --accent-ring: rgba(4, 102, 255, 0.18);
+  --eyebrow: #067a68;
+
+  --top: #ffffff;
+  --top-2: #e3e8f1;
+  --top-text: #4b5670;
+  --top-strong: #0a0f1e;
+
+  --failed: #e5484d;
+  --untested: #dfe4ec;
+  --danger: #e5484d;
+  --danger-ink: #820014;
+  --danger-soft: #fdf2f4;
+  --warn: #b45309;
+
+  --shadow-xs: 0 1px 2px rgba(10, 15, 30, 0.04);
+  --shadow: 0 4px 30px rgba(10, 15, 30, 0.05);
+  --shadow-md: 0 4px 30px rgba(10, 15, 30, 0.09);
+  --shadow-lg: 0 8px 40px rgba(10, 15, 30, 0.16);
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0a1420;
-    --surface: #10202f;
-    --surface-2: #16293a;
-    --surface-3: #1e3547;
-    --border: #1f3648;
-    --border-strong: #2c4a61;
-    --text: #e6edf3;
-    --text-dim: #9fb3c4;
-    --text-faint: #6d8499;
-    --accent: #29c3e2;
-    --accent-hover: #5cd4ec;
-    --accent-soft: #0d2c38;
-    --accent-ring: rgba(41, 195, 226, 0.24);
-    --top: #0c1a28;
-    --top-2: #1f3648;
-    --untested: #2c4054;
-  --top-text: #9fb3c4;
-  --top-strong: #e6edf3;
-    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
-    --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
-    color-scheme: dark;
-  }
+/* a project's identity colour, from projectVars(): both theme pairs arrive
+   inline and the theme picks one, the same way it picks everything else */
+.projvars {
+  --project: var(--project-dark);
+  --project-soft: var(--project-soft-dark);
 }
-
-:root[data-theme="dark"] {
-  --bg: #0a1420;
-  --surface: #10202f;
-  --surface-2: #16293a;
-  --surface-3: #1e3547;
-  --border: #1f3648;
-  --border-strong: #2c4a61;
-  --text: #e6edf3;
-  --text-dim: #9fb3c4;
-  --text-faint: #6d8499;
-  --accent: #29c3e2;
-  --accent-hover: #5cd4ec;
-  --accent-soft: #0d2c38;
-  --accent-ring: rgba(41, 195, 226, 0.24);
-  --top: #0c1a28;
-  --top-2: #1f3648;
-  --untested: #2c4054;
-  --top-text: #9fb3c4;
-  --top-strong: #e6edf3;
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
-  color-scheme: dark;
+:root[data-theme="light"] .projvars {
+  --project: var(--project-light);
+  --project-soft: var(--project-soft-light);
 }
 
 * { box-sizing: border-box; }
@@ -126,10 +134,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  /* Omnes is the DGPays brand face and is licensed per seat; it is named
-     first so an installed copy is used, with the shipped Inter behind it. */
-  font-family: Omnes, Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
-               Inter, Roboto, sans-serif;
+  font-family: var(--sans);
   font-size: 13.5px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -151,8 +156,8 @@ button {
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
-  padding: 7px 14px;
-  border-radius: var(--radius-sm);
+  padding: 7px 15px;
+  border-radius: var(--radius-pill);
   box-shadow: var(--shadow-xs);
   transition: background 0.14s var(--ease), border-color 0.14s var(--ease),
               box-shadow 0.14s var(--ease), transform 0.1s var(--ease);
@@ -163,12 +168,15 @@ button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); 
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 button.primary {
-  background: var(--accent);
+  background: var(--button-gradient);
   border-color: transparent;
   color: #fff;
-  box-shadow: var(--shadow);
+  box-shadow: 0 6px 20px rgba(4, 102, 255, 0.25);
 }
-button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+button.primary:hover:not(:disabled) {
+  background: var(--button-gradient); filter: brightness(1.12);
+  box-shadow: 0 8px 26px rgba(4, 102, 255, 0.35);
+}
 
 button.ghost {
   border-color: transparent;
@@ -332,8 +340,9 @@ a.masthead-link:hover, .masthead .who:hover {
 }
 .sidebar h3 {
   margin: 0 0 8px; padding: 0 6px;
-  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em;
-  color: var(--text-faint); font-weight: 700;
+  font-family: var(--mono);
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--eyebrow); font-weight: 500;
 }
 .main { flex: 1; overflow: auto; padding: 20px 22px; min-width: 0; }
 
@@ -367,12 +376,19 @@ a.masthead-link:hover, .masthead .who:hover {
 }
 .crumbs b { color: var(--text-dim); font-weight: 600; }
 .crumbs .icon { opacity: 0.5; }
+.crumbs .crumb-step { display: inline-flex; align-items: center; gap: 6px; }
+.crumbs a { color: var(--text-faint); }
+.crumbs a:hover { color: var(--accent); text-decoration: none; }
+.crumbs a.proj { color: var(--text-dim); font-weight: 600; }
 
 .page-title {
   display: flex; align-items: center; gap: 12px;
   margin: 0 0 18px; flex-wrap: wrap;
 }
-.page-title h1 { margin: 0; font-size: 22px; font-weight: 640; letter-spacing: -0.02em; }
+.page-title h1 {
+  margin: 0; font-family: var(--display);
+  font-size: 23px; font-weight: 700; letter-spacing: -0.03em;
+}
 .page-title .right { margin-left: auto; display: flex; gap: 8px; }
 
 .panel {
@@ -391,10 +407,12 @@ a.masthead-link:hover, .masthead .who:hover {
 /* ---------- tables ---------- */
 table { width: 100%; border-collapse: collapse; }
 table.grid { table-layout: fixed; }
+td.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 th {
   text-align: left;
-  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+  font-family: var(--mono);
+  font-size: 10.5px; font-weight: 500; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--text-faint);
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
@@ -411,7 +429,8 @@ tbody tr:hover td.title { color: var(--accent); }
 .col-head {
   display: flex; padding: 10px 14px;
   background: var(--surface); border-bottom: 1px solid var(--border);
-  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+  font-family: var(--mono);
+  font-size: 10.5px; font-weight: 500; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--text-faint);
   position: sticky; top: 0; z-index: 3;
 }
@@ -423,9 +442,12 @@ tbody tr:hover td.title { color: var(--accent); }
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   cursor: pointer; user-select: none;
-  position: sticky; top: 36px; z-index: 2;
+  position: sticky; top: 0; z-index: 2;
   transition: background 0.12s var(--ease);
 }
+/* under a sticky column header, stick just below it; everywhere else a
+   36px offset pushed the first group down over its own first row */
+.col-head ~ * .group-head { top: 36px; }
 .group-head:hover { background: var(--surface-3); }
 .group-head .icon { color: var(--text-faint); }
 .group-head .name { font-weight: 600; }
@@ -469,10 +491,10 @@ tbody tr:hover td.title { color: var(--accent); }
   background: var(--accent-soft); color: var(--accent);
   font-family: var(--mono); font-size: 12px; font-weight: 600;
 }
-.idbadge.run { background: #ede9fe; color: #6d28d9; }
-.idbadge.test { background: #ccfbf1; color: #0f766e; }
-:root[data-theme="dark"] .idbadge.run { background: #2e1065; color: #c4b5fd; }
-:root[data-theme="dark"] .idbadge.test { background: #042f2e; color: #5eead4; }
+.idbadge.run { background: #2e1065; color: #c4b5fd; }
+.idbadge.test { background: #042f2e; color: #5eead4; }
+:root[data-theme="light"] .idbadge.run { background: #ede9fe; color: #6d28d9; }
+:root[data-theme="light"] .idbadge.test { background: #ccfbf1; color: #0f766e; }
 
 .bar, .mini-bar {
   display: flex; border-radius: var(--radius-pill); overflow: hidden;
@@ -489,13 +511,30 @@ tbody tr:hover td.title { color: var(--accent); }
 
 /* ---------- overview ---------- */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+/* six figures: auto-fit laid them out five and one; these counts divide six */
+.cards.six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1250px) { .cards.six { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .tile { padding: 18px 20px; }
-.tile .n { font-size: 27px; font-weight: 640; line-height: 1.1; letter-spacing: -0.02em; }
+.tile .n {
+  font-family: var(--display);
+  font-size: 27px; font-weight: 700; line-height: 1.1; letter-spacing: -0.03em;
+}
 .tile .k { color: var(--text-faint); font-size: 12.5px; margin-top: 3px; }
 
 .donut-wrap { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; }
 .pass-big { text-align: center; }
-.pass-big .n { font-size: 40px; font-weight: 300; line-height: 1; letter-spacing: -0.03em; }
+.pass-big .n {
+  font-family: var(--display);
+  font-size: 40px; font-weight: 700; line-height: 1; letter-spacing: -0.04em;
+}
+/* what the dashboard's bar colours mean */
+.barkey {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px;
+  margin: 0 0 10px; font-size: 12px; color: var(--text-dim);
+}
+.barkey .eyebrow { margin-right: 4px; }
+.barkey span:not(.eyebrow) { display: inline-flex; align-items: center; gap: 6px; }
+.barkey i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .pass-big .k { color: var(--text-faint); font-size: 12.5px; margin-top: 5px; }
 
 /* ---------- suite cards ---------- */
@@ -522,9 +561,11 @@ tbody tr:hover td.title { color: var(--accent); }
   background: var(--surface); padding: 18px 20px;
   box-shadow: var(--shadow-xs);
 }
+/* No uppercase here, unlike the table headers: these labels are custom
+   field names carried over from TestRail, mostly English, and uppercasing
+   English under lang="tr" turns "Priority" into "PRİORİTY". */
 .fieldgrid .k {
-  font-size: 10.5px; font-weight: 700; color: var(--text-faint);
-  text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: 12px; font-weight: 600; color: var(--text-faint);
 }
 .fieldgrid .v { margin-top: 3px; }
 /* the same grid in edit mode: the label sits where the .k caption was */
@@ -536,6 +577,10 @@ tbody tr:hover td.title { color: var(--accent); }
   margin: 22px 0 10px; font-size: 14px; font-weight: 640; letter-spacing: -0.01em;
 }
 .section-rule::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+/* an action in a section heading sits at the far end, past the rule, where
+   every other screen keeps its buttons */
+.section-rule::after { order: 1; }
+.section-rule > button { order: 2; }
 
 .steprow { display: grid; grid-template-columns: 32px 1fr 1fr; gap: 12px; margin-bottom: 10px; }
 .steprow .num {
@@ -558,8 +603,9 @@ tbody tr:hover td.title { color: var(--accent); }
 
 .field { margin-bottom: 15px; }
 .field > label {
-  display: block; font-size: 10.5px; font-weight: 700; color: var(--text-faint);
-  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px;
+  display: block; font-family: var(--mono);
+  font-size: 10.5px; font-weight: 500; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;
 }
 
 .steps { display: flex; flex-direction: column; gap: 9px; }
@@ -675,6 +721,13 @@ tbody tr:hover td.title { color: var(--accent); }
   border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
   padding: 9px 12px; border-radius: var(--radius-sm); font-size: 12.5px;
 }
+/* the calm counterpart of .error: something is happening, nothing is wrong */
+.notice {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  padding: 9px 12px; border-radius: var(--radius-sm); font-size: 12.5px;
+}
 
 .empty { padding: 46px 28px; text-align: center; color: var(--text-faint); }
 .empty b { display: block; color: var(--text); margin-bottom: 5px; font-size: 15px; }
@@ -708,50 +761,112 @@ tbody tr:hover td.title { color: var(--accent); }
   animation: pop 0.18s var(--ease);
 }
 
-/* ---------- sign in ---------- */
-.signin {
-  height: 100%; display: grid; place-items: center; padding: 24px 16px;
-  background:
-    radial-gradient(1100px 500px at 50% -10%, #2c2f6e 0%, transparent 60%),
-    var(--top);
-  overflow: auto;
+/* ---------- eyebrow ---------- */
+/* dgpays.com's section label: a short rule, then mono caps in teal */
+.eyebrow {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--eyebrow);
 }
-.signin-inner { width: 100%; max-width: 372px; }
-.wordmark {
-  display: flex; align-items: center; justify-content: center; gap: 11px;
-  color: #fff; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
-  margin-bottom: 26px;
+.eyebrow::before {
+  content: ''; width: 18px; height: 1px; background: currentColor; flex: none;
+}
+
+/* ---------- sign in ---------- */
+/* Always the site's dark navy, whatever theme the app itself is in: this is
+   the one screen that is the brand before it is the tool. The variables are
+   pinned here so a saved light choice does not repaint it. */
+.signin {
+  --surface: #0b0e17; --surface-2: #10141f;
+  --border: #1a2030; --border-strong: #283044;
+  --text: #e8f0ff; --text-dim: #a9b2c6; --text-faint: #7d879d;
+  --accent: #00a0ec; --accent-ring: rgba(0, 160, 236, 0.3);
+  --eyebrow: #1ee7c5;
+  color-scheme: dark;
+
+  min-height: 100%; display: flex; flex-direction: column;
+  color: var(--text);
+  background:
+    radial-gradient(900px 520px at 78% 30%, rgba(4, 102, 255, 0.16), transparent 62%),
+    radial-gradient(520px 340px at 70% 45%, rgba(30, 231, 197, 0.08), transparent 70%),
+    radial-gradient(700px 360px at 10% 110%, rgba(0, 160, 236, 0.08), transparent 70%),
+    #05070d;
+}
+.signin-top {
+  padding: 22px clamp(20px, 6vw, 88px);
+  border-bottom: 1px solid var(--border);
+}
+.signin-top .logotype .word { color: #fff; }
+.signin-top .logotype small { color: #a9b2c6; }
+
+.signin-body {
+  flex: 1; width: 100%; max-width: 1180px; margin: 0 auto;
+  display: grid; grid-template-columns: minmax(0, 1fr) 380px;
+  gap: clamp(32px, 5vw, 72px); align-items: center;
+  padding: 48px clamp(20px, 6vw, 88px);
+}
+
+.signin-hero h1 {
+  font-family: var(--display); font-weight: 700;
+  font-size: clamp(32px, 3.4vw, 46px); line-height: 1.06;
+  letter-spacing: -0.035em; margin: 22px 0 22px; color: #fff;
+}
+.signin-hero .grad, .grad-text {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.signin-hero p {
+  font-size: 16px; line-height: 1.7; color: var(--text-dim);
+  max-width: 520px; margin: 0 0 30px;
+}
+.signin-hero .pills { display: flex; flex-wrap: wrap; gap: 10px; }
+.signin-hero .pills span {
+  font-family: var(--mono); font-size: 12.5px; color: #fff;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  padding: 10px 20px;
 }
 
 .signin-card {
-  background: var(--surface); color: var(--text);
-  border-radius: 16px; padding: 28px 30px 30px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
-  display: flex; flex-direction: column; gap: 15px;
-  border: 1px solid var(--border);
+  background: rgba(11, 14, 23, 0.86);
+  border: 1px solid var(--border); border-radius: 20px;
+  padding: 30px 30px 32px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  display: flex; flex-direction: column; gap: 18px;
+  backdrop-filter: blur(6px);
 }
-.signin-card h1 { margin: 0; font-size: 19px; font-weight: 640; text-align: center; }
 .signin-card h2 {
-  margin: 0; font-size: 13.5px; font-weight: 400;
-  text-align: center; color: var(--text-faint);
+  margin: -6px 0 4px; font-family: var(--display);
+  font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: #fff;
 }
-.signin-card .float { position: relative; display: block; padding-top: 15px; }
-.signin-card .float input { padding: 9px 12px; }
-.signin-card .float span {
-  position: absolute; left: 12px; top: 24px;
-  color: var(--text-faint); font-size: 13.5px; pointer-events: none;
-  transition: transform 0.13s var(--ease), font-size 0.13s var(--ease),
-              color 0.13s var(--ease);
+.signin-card .field { display: flex; flex-direction: column; gap: 7px; margin: 0; }
+.signin-card .field > span {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim);
 }
-.signin-card .float input:focus + span,
-.signin-card .float input:not(:placeholder-shown) + span {
-  transform: translateY(-22px) translateX(-2px);
-  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
-  text-transform: uppercase;
+.signin-card input:not([type="checkbox"]) {
+  background: #05070d; padding: 11px 14px; border-radius: 12px;
 }
-.signin-card .check { display: flex; align-items: center; gap: 9px; font-size: 13px; }
-button.big { padding: 11px; font-size: 14.5px; width: 100%; justify-content: center; }
-.version { text-align: center; color: rgba(255, 255, 255, 0.35); font-size: 12px; margin-top: 18px; }
+.signin-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; font-size: 13px;
+}
+.signin-card .check { display: flex; align-items: center; gap: 9px; color: var(--text-dim); }
+button.big { padding: 13px; font-size: 14.5px; width: 100%; justify-content: center; }
+
+.signin-foot {
+  display: flex; justify-content: space-between;
+  padding: 18px clamp(20px, 6vw, 88px);
+  border-top: 1px solid var(--border);
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-faint);
+}
+
+@media (max-width: 900px) {
+  .signin-body { grid-template-columns: minmax(0, 1fr); padding-top: 32px; }
+  .signin-hero p, .signin-hero .pills { display: none; }
+  .signin-hero h1 { margin-bottom: 0; }
+}
 
 .kv { display: grid; grid-template-columns: 160px 1fr; gap: 9px 16px; font-size: 13px; }
 .kv .k { color: var(--text-faint); }
@@ -871,33 +986,36 @@ kbd {
 .flakybar > span { display: block; height: 100%; }
 
 /* ---- brand -------------------------------------------------------------- */
-/* The mark is drawn in currentColor, so it takes the colour of whatever it
-   sits in: light on the masthead, accent on a white page. */
-.logotype {
-  display: inline-flex; align-items: baseline; gap: 8px;
-  /* the mark takes the accent; on the dark sign-in page a lighter tone is
-     set on .wordmark below */
-  color: var(--accent);
-}
-.logotype svg { align-self: center; flex-shrink: 0; }
+/* The DGPays disc carries its own gradient, so it reads the same on the
+   dark and the light theme; the wordmark follows the masthead text. */
+.logotype { display: inline-flex; align-items: center; gap: 10px; }
+.logotype svg { flex-shrink: 0; }
+.logotype .lockup { display: flex; flex-direction: column; gap: 3px; }
 .logotype .word {
-  font-weight: 640; letter-spacing: -0.02em; color: var(--top-strong, #fff);
-  line-height: 1;
+  font-family: var(--display);
+  font-weight: 700; letter-spacing: -0.03em; line-height: 1;
+  color: var(--top-strong);
+}
+.logotype .word .grad {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
 }
 .logotype small {
-  font-size: 11.5px; font-weight: 400; letter-spacing: 0;
-  color: var(--top-text); opacity: 0.85;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase; line-height: 1;
+  color: var(--top-text);
 }
-/* on the sign-in card the page is dark, so the mark keeps its light tone */
-.wordmark .logotype { color: #5cd4ec; }
-.wordmark .logotype .word { color: #fff; }
 
 /* ---- Today ------------------------------------------------------------- */
 /* The front door. Cards rather than one long table, because the four things
    it answers are different in kind and a uniform list would flatten them. */
 .today { max-width: 1320px; }
 .today-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
-.today-head h1 { font-size: 26px; font-weight: 640; letter-spacing: -0.02em; }
+.today-head h1 {
+  font-family: var(--display);
+  font-size: 28px; font-weight: 700; letter-spacing: -0.035em;
+}
 
 .today-grid {
   display: grid; gap: 14px;
@@ -958,6 +1076,7 @@ kbd {
   padding: 2px 8px; border-radius: var(--radius-pill);
   white-space: nowrap; flex: none; max-width: 150px;
   overflow: hidden; text-overflow: ellipsis;
+  color: var(--project); background: var(--project-soft);
 }
 
 .runbar {
@@ -1089,7 +1208,14 @@ kbd {
   padding: 10px 12px;
 }
 .explorer-bar .grow { flex: 1 1 240px; min-width: 200px; }
-.explorer-bar select { min-width: 0; max-width: 200px; }
+/* sized to what they say: at the global width: 100% each one stretched to
+   its 200px cap and seven of them could never share a line */
+.explorer-bar select { width: auto; flex: 0 1 auto; min-width: 0; max-width: 200px; }
+.explorer-bar .sortby {
+  display: flex; align-items: center; gap: 8px; margin-left: auto;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-faint);
+}
 
 .explorer-table tbody tr { cursor: pointer; }
 .explorer-table td.title {
@@ -1116,3 +1242,97 @@ kbd {
 .tile.gap .n { color: var(--warn); }
 .tile.linked:hover { border-color: var(--accent); }
 .tile.linked:hover .k { color: var(--accent); }
+
+/* ---------- folded rail ---------- */
+.rail { display: flex; flex-direction: column; transition: width 0.18s var(--ease); }
+.rail .fold {
+  margin-top: auto; justify-content: flex-start; gap: 10px;
+  color: var(--text-faint); font-size: 12.5px; padding: 8px 11px;
+}
+.rail.folded { width: 60px; padding-left: 8px; padding-right: 8px; }
+.rail.folded .label, .rail.folded .note { display: none; }
+.rail.folded .proj { justify-content: center; padding-left: 0; padding-right: 0; }
+.rail.folded a, .rail.folded .fold { justify-content: center; padding: 9px 0; }
+
+/* ---------- narrow screens ----------------------------------------------
+   Nobody writes a test case on a phone, but people do open the link to a
+   failed run from a chat message. Below 760px the masthead folds onto two
+   lines, the rail becomes a strip of tabs, and wide tables scroll inside
+   their own panel instead of pushing the whole page sideways. */
+.masthead .icon-narrow { display: none; }
+
+@media (max-width: 760px) {
+  .masthead {
+    height: auto; flex-wrap: wrap;
+    padding: 8px 12px; gap: 6px 4px;
+  }
+  .masthead .label,
+  .masthead .logotype small { display: none; }
+  .masthead .icon-narrow { display: inline-flex; }
+  .masthead-link, .masthead .who { padding: 7px 8px; }
+  .masthead .spacer { flex: 1 0 0; min-width: 0; }
+  /* second line: which project, and the search box */
+  .masthead select.project { order: 9; min-width: 0; flex: 1 1 40%; }
+  .omnibox { order: 10; flex: 1 1 55%; width: auto; }
+  /* the bell borrows .omnibox for its dropdown, but stays on the first line */
+  .omnibox.notif { order: 0; flex: none; }
+
+  .body { flex-direction: column; }
+  .rail, .rail.folded {
+    width: auto; flex-direction: row; gap: 2px;
+    padding: 6px 8px; overflow-x: auto; overflow-y: hidden;
+    border-right: none; border-bottom: 1px solid var(--border);
+    border-top: 3px solid var(--project, var(--accent));
+    scrollbar-width: none;
+  }
+  .rail::-webkit-scrollbar { display: none; }
+  .rail::before, .rail .proj, .rail .note, .rail .fold { display: none; }
+  .rail.folded .label { display: inline; }
+  .rail.folded a { padding: 7px 10px; }
+  .rail a { flex: none; white-space: nowrap; padding: 7px 10px; }
+
+  /* the section tree of a suite sits above its cases, and stays short */
+  .sidebar {
+    width: auto; max-height: 34vh;
+    border-right: none; border-bottom: 1px solid var(--border);
+  }
+
+  .main { padding: 16px 12px; min-height: 0; }
+  .page-title h1 { font-size: 19px; }
+  .page-title .right { margin-left: 0; flex-wrap: wrap; }
+
+  .panel { overflow-x: auto; }
+  .panel > table, .panel table.grid { min-width: 620px; }
+  /* column lists (a .col-head over per-group tables) scroll as one piece */
+  .panel:has(> .col-head) > * { min-width: 620px; }
+  .fieldgrid { grid-template-columns: minmax(0, 1fr); }
+  /* figures read fine two to a row; one per row is a lot of scrolling */
+  .cards:has(> .tile) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tile { padding: 14px 16px; }
+  .tile .n { font-size: 23px; }
+  .kv { grid-template-columns: 110px 1fr; }
+}
+
+.loadmore { display: flex; justify-content: center; padding: 16px 0 4px; }
+
+/* ---- the ⋯ menu --------------------------------------------------------- */
+.moremenu { position: relative; }
+.moremenu-list {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+  min-width: 190px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column; gap: 2px;
+  animation: pop 0.14s var(--ease);
+}
+.moremenu-list button {
+  justify-content: flex-start; width: 100%;
+  background: transparent; border: none; box-shadow: none;
+  border-radius: var(--radius-sm); padding: 8px 10px;
+  color: var(--text); font-weight: 500;
+}
+.moremenu-list button:hover:not(:disabled) { background: var(--surface-2); box-shadow: none; }
+.moremenu-list button.danger { color: var(--danger); }
+.moremenu-list button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}

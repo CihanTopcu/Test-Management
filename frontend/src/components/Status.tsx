@@ -13,6 +13,30 @@ export function statusColor(catalog: Catalog | undefined, id: number | null | un
   return catalog?.statuses.find((s) => s.id === id)?.color ?? 'var(--untested)'
 }
 
+const DARK_INK = '#0a0f1e'
+
+/**
+ * Text colour for a label painted on `background`.
+ *
+ * Badges were always white text, which on TestRail's own green and amber
+ * came out at about 2:1 -- "Passed" was the hardest word on the page to
+ * read. Whichever of white or near-black contrasts more wins. Colours given
+ * as CSS variables cannot be measured here and keep white.
+ */
+export function inkOn(background: string): string {
+  const hex = background.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1]
+  if (!hex) return '#fff'
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex
+  const channel = (i: number) => {
+    const c = parseInt(full.slice(i, i + 2), 16) / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const lum = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4)
+  const againstWhite = 1.05 / (lum + 0.05)
+  const againstDark = (lum + 0.05) / 0.0561   // #0a0f1e's luminance + 0.05
+  return againstDark > againstWhite ? DARK_INK : '#fff'
+}
+
 export function statusLabel(catalog: Catalog | undefined, id: number | null | undefined) {
   if (id == null) return 'Untested'
   return catalog?.statuses.find((s) => s.id === id)?.label ?? `#${id}`
@@ -20,7 +44,8 @@ export function statusLabel(catalog: Catalog | undefined, id: number | null | un
 
 export function StatusBadge({ catalog, id }: { catalog?: Catalog; id: number | null }) {
   return (
-    <span className="badge" style={{ background: statusColor(catalog, id) }}>
+    <span className="badge" style={{
+      background: statusColor(catalog, id), color: inkOn(statusColor(catalog, id)) }}>
       {statusLabel(catalog, id)}
     </span>
   )

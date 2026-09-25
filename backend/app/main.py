@@ -1,4 +1,4 @@
-"""DGPays Test Management API."""
+"""DGTest API -- DGPays yazilim test yonetimi."""
 import logging
 from contextlib import asynccontextmanager
 

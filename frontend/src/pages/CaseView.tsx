@@ -12,6 +12,7 @@ import { RichText } from '../components/RichText'
 import { StepsEditor, type StepDraft } from '../components/StepsEditor'
 import type { TestCase } from '../api/types'
 import { href, type Route } from '../route'
+import { Crumbs } from '../components/Crumbs'
 
 /**
  * The case page is generated from the field catalog, not hard-coded.
@@ -134,13 +135,11 @@ export function CaseView({ route, projectName }: { route: Route; projectName: st
 
   return (
     <main className="main">
-      <div className="crumbs">
-        <b>{projectName}</b>
-        {' › '}
-        <a href={href({ page: 'suites', project: route.project })}>Test Suite’leri</a>
-        {suite && <> › <a href={href({ page: 'suites', project: route.project, suite: suite.id })}>
-          {suite.name}</a></>}
-      </div>
+      <Crumbs projectId={route.project} projectName={projectName} trail={[
+        { label: 'Test Suite’leri', href: href({ page: 'suites', project: route.project }) },
+        ...(suite ? [{ label: suite.name,
+                       href: href({ page: 'suites', project: route.project, suite: suite.id }) }] : []),
+      ]} />
 
       <div className="page-title">
         <span className="idbadge">C{item.id}</span>
@@ -309,22 +308,22 @@ export function CaseView({ route, projectName }: { route: Route; projectName: st
       {!editing && tab === 'detay' && (
         <>
           <div className="fieldgrid">
-            <div><div className="k">Type</div><div className="v">{type?.name ?? 'None'}</div></div>
-            <div><div className="k">Priority</div><div className="v">{priority?.name ?? 'None'}</div></div>
-            <div><div className="k">Template</div><div className="v">{template?.name ?? 'None'}</div></div>
-            <div><div className="k">Estimate</div><div className="v">{item.estimate ?? 'None'}</div></div>
+            <div><div className="k">Tip</div><div className="v">{type?.name ?? <span className="faint">—</span>}</div></div>
+            <div><div className="k">Öncelik</div><div className="v">{priority?.name ?? <span className="faint">—</span>}</div></div>
+            <div><div className="k">Şablon</div><div className="v">{template?.name ?? <span className="faint">—</span>}</div></div>
+            <div><div className="k">Tahmini süre</div><div className="v">{item.estimate ?? <span className="faint">—</span>}</div></div>
             <div>
               <div className="k">Milestone</div>
-              <div className="v">{milestone?.name ?? <span className="faint">None</span>}</div>
+              <div className="v">{milestone?.name ?? <span className="faint">—</span>}</div>
             </div>
             <div>
-              <div className="k">References</div>
+              <div className="k">Referanslar</div>
               <div className="v">
                 {item.refs
                   ? (/^https?:\/\//.test(item.refs)
                       ? <a href={item.refs} target="_blank" rel="noreferrer">{item.refs}</a>
                       : item.refs)
-                  : <span className="faint">None</span>}
+                  : <span className="faint">—</span>}
               </div>
             </div>
             {shownShort.map((f) => (

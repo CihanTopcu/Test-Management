@@ -5,6 +5,7 @@ import { Dialog } from '../components/Dialog'
 import { Icon } from '../components/Icon'
 import { RichText } from '../components/RichText'
 import type { Route } from '../route'
+import { Crumbs } from '../components/Crumbs'
 
 interface Shared {
   id: number
@@ -67,7 +68,7 @@ export function SharedSteps({ route, projectName }: { route: Route; projectName:
 
   return (
     <main className="main">
-      <div className="crumbs"><b>{projectName}</b></div>
+      <Crumbs projectId={route.project} projectName={projectName} />
       <div className="page-title">
         <h1>Paylaşılan Adımlar</h1>
         <span className="faint small">{items.length} blok</span>

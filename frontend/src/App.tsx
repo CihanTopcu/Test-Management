@@ -23,16 +23,19 @@ import { SuiteView } from './pages/SuiteView'
 import { Today } from './pages/Today'
 import { Suites } from './pages/Suites'
 import { Todo } from './pages/Todo'
-import { projectColor } from './projectColor'
+import { projectVars } from './projectColor'
 import { href, useRoute, type Page, type Route } from './route'
 
-const THEME_KEY = 'tm.theme'
+const THEME_KEY = 'tm.theme-choice'
+const LEGACY_THEME_KEY = 'tm.theme'
 const PROJECT_KEY = 'tm.project'
+const RAIL_KEY = 'tm.rail'
 
 const NAV: { page: Page; label: string; icon: IconName }[] = [
   { page: 'overview', label: 'Proje Özeti', icon: 'grid' },
   { page: 'todo', label: 'Yapılacaklar', icon: 'check-circle' },
   { page: 'suites', label: 'Test Case’leri', icon: 'list' },
+  { page: 'cases', label: 'Case Gezgini', icon: 'search' },
   { page: 'runs', label: 'Koşumlar ve Sonuçlar', icon: 'play' },
   { page: 'plans', label: 'Test Planları', icon: 'folder' },
   { page: 'milestones', label: 'Milestone’lar', icon: 'flag' },
@@ -40,32 +43,68 @@ const NAV: { page: Page; label: string; icon: IconName }[] = [
   { page: 'reports', label: 'Raporlar', icon: 'chart' },
 ]
 
+/** Screens about the whole workspace rather than one project: no rail, and
+ *  the project picker shows no project instead of a stale one. */
+const GLOBAL_PAGES: Page[] = ['dashboard', 'settings', 'today', 'admin']
+
 function readStored(key: string) {
   try { return localStorage.getItem(key) } catch { return null }
 }
 
+/**
+ * Dark by default, as dgpays.com is; the toggle stores a choice. index.html
+ * applies a stored 'light' before the first paint, so this only has to keep
+ * the attribute in step afterwards. The old key is dropped: it was written
+ * on every visit and never recorded a decision.
+ */
+function useTheme(): [boolean, (dark: boolean) => void] {
+  const [dark, setDark] = useState(() => readStored(THEME_KEY) !== 'light')
+
+  useEffect(() => {
+    if (dark) delete document.documentElement.dataset.theme
+    else document.documentElement.dataset.theme = 'light'
+  }, [dark])
+
+  const choose = (next: boolean) => {
+    setDark(next)
+    try {
+      localStorage.setItem(THEME_KEY, next ? 'dark' : 'light')
+      localStorage.removeItem(LEGACY_THEME_KEY)
+    } catch { /* ignore */ }
+  }
+  return [dark, choose]
+}
+
 function Rail({ route, projectName }: { route: Route; projectName: string }) {
   const { data: stats } = useProjectStats(route.project)
-  // the case page has no nav entry of its own; it belongs under the suites tab
-  const active: Page = route.page === 'cases' ? 'suites' : route.page
+  // one case belongs under the suite it lives in; the project-wide filtered
+  // library is its own entry, which reports drill into
+  const active: Page = route.page === 'cases' && route.case ? 'suites' : route.page
+  // the suite screen is three columns wide -- rail, section tree, cases -- and
+  // the cases were the ones getting squeezed; folded, the rail keeps only icons
+  const [folded, setFolded] = useState(() => readStored(RAIL_KEY) === 'folded')
+  const fold = (next: boolean) => {
+    setFolded(next)
+    try { localStorage.setItem(RAIL_KEY, next ? 'folded' : 'open') } catch { /* ignore */ }
+  }
   // the rail carries the project's identity colour: with sixteen projects
   // that all look alike, this is what stops people reading the wrong one
-  const colour = projectColor(route.project)
-
   return (
-    <aside className="rail" style={{
-      '--project': colour.ink, '--project-soft': colour.soft,
-    } as React.CSSProperties}>
-      <div className="proj">
+    <aside className={`rail projvars ${folded ? 'folded' : ''}`}
+           style={projectVars(route.project)}>
+      <div className="proj" title={projectName}>
         <span className="chip">{projectName.slice(0, 1) || '?'}</span>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{projectName}</span>
+        <span className="label" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {projectName}
+        </span>
       </div>
       {NAV.map((item) => (
         <a key={item.page}
            className={active === item.page ? 'active' : ''}
+           title={folded ? item.label : undefined}
            href={href({ page: item.page, project: route.project })}>
           <Icon name={item.icon} size={16} />
-          {item.label}
+          <span className="label">{item.label}</span>
         </a>
       ))}
       {stats && (
@@ -75,6 +114,11 @@ function Rail({ route, projectName }: { route: Route; projectName: string }) {
           {stats.runs.toLocaleString('tr-TR')} koşum · {stats.milestones} milestone
         </div>
       )}
+      <button className="ghost fold" onClick={() => fold(!folded)}
+              title={folded ? 'Menüyü genişlet' : 'Menüyü daralt'}>
+        <Icon name={folded ? 'chevron-right' : 'chevron-left'} size={14} />
+        <span className="label">Menüyü daralt</span>
+      </button>
     </aside>
   )
 }
@@ -83,17 +127,16 @@ function Shell() {
   const { data: me } = useMe()
   const { data: projects = [] } = useProjects()
   const [route, go] = useRoute()
-  const [dark, setDark] = useState(() => readStored(THEME_KEY) === 'dark')
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
-    try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light') } catch { /* ignore */ }
-  }, [dark])
+  const [dark, setDark] = useTheme()
 
   // a link without a project falls back to the last one used, then the first
   useEffect(() => {
-    if (route.page === 'dashboard' || route.page === 'settings'
-        || route.page === 'today') return
+    if (GLOBAL_PAGES.includes(route.page)) {
+      // old links carry a project (#/p/1/admin, in notifications already
+      // sent); keep them working, but land on the project-less address
+      if (route.project) go({ ...route, project: undefined })
+      return
+    }
     if (!route.project && projects.length) {
       const remembered = Number(readStored(PROJECT_KEY))
       const known = projects.some((p) => p.id === remembered)
@@ -114,6 +157,9 @@ function Shell() {
     // the only screen that is not about one project
     if (route.page === 'dashboard') return <Dashboard />
     if (route.page === 'settings') return <Settings />
+    // users, roles and fields are workspace-wide; it used to sit under
+    // #/p/N/admin with a project rail that had nothing to do with it
+    if (route.page === 'admin') return <Admin />
     // the front door: work, not statistics
     if (route.page === 'today') return <Today />
     if (!route.project) {
@@ -138,7 +184,6 @@ function Shell() {
       case 'shared': return <SharedSteps route={route} projectName={projectName} />
       case 'todo': return <Todo />
       case 'reports': return <Reports route={route} projectName={projectName} />
-      case 'admin': return <Admin />
     }
   }
 
@@ -152,20 +197,23 @@ function Shell() {
 
         <select className="project" value={route.project ?? ''}
                 onChange={(e) => go({
-                  page: route.page === 'cases' || route.page === 'dashboard'
-                    ? 'suites' : route.page,
+                  // same screen in the other project where that makes sense;
+                  // from a workspace-wide screen, the project's overview
+                  page: GLOBAL_PAGES.includes(route.page) ? 'overview'
+                    : route.page === 'cases' ? 'suites' : route.page,
                   project: Number(e.target.value),
                 })}>
+          {!route.project && <option value="" disabled>Proje seçin…</option>}
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
 
         <a className={`masthead-link ${route.page === 'today' ? 'active' : ''}`}
-           href={href({ page: 'today' })}>
-          <Icon name="check-circle" size={15} /> Bugün
+           href={href({ page: 'today' })} title="Bugün">
+          <Icon name="check-circle" size={15} /> <span className="label">Bugün</span>
         </a>
         <a className={`masthead-link ${route.page === 'dashboard' ? 'active' : ''}`}
-           href={href({ page: 'dashboard' })}>
-          <Icon name="grid" size={15} /> Tüm Projeler
+           href={href({ page: 'dashboard' })} title="Tüm Projeler">
+          <Icon name="grid" size={15} /> <span className="label">Tüm Projeler</span>
         </a>
 
         <Omnibox projectId={route.project} />
@@ -176,13 +224,16 @@ function Shell() {
         <button className="ghost icon-only" title="Tema" onClick={() => setDark(!dark)}>
           <Icon name={dark ? 'sun' : 'moon'} size={16} />
         </button>
-        <a href={href({ page: 'admin', project: route.project })}
-           className="who" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Icon name="settings" size={15} /> Yönetim
+        <a href={href({ page: 'admin' })}
+           className="who" title="Yönetim"
+           style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Icon name="settings" size={15} /> <span className="label">Yönetim</span>
         </a>
         <a className="who" href={href({ page: 'settings' })}
-           title="Bildirim ve rapor ayarları">
-          {me?.name}
+           title="Bildirim ve rapor ayarları"
+           style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="icon-narrow"><Icon name="user" size={15} /></span>
+          <span className="label">{me?.name}</span>
         </a>
         <button className="ghost icon-only" title="Çıkış"
                 onClick={() => api.logout().then(() => location.reload())}>
@@ -193,8 +244,7 @@ function Shell() {
       <Shortcuts route={route} />
 
       <div className="body">
-        {route.project && route.page !== 'dashboard'
-          && route.page !== 'settings' && route.page !== 'today' && (
+        {route.project && !GLOBAL_PAGES.includes(route.page) && (
           <Rail route={route} projectName={projectName} />
         )}
         {page()}

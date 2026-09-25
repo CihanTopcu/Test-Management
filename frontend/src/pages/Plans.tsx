@@ -9,6 +9,8 @@ import { Dialog } from '../components/Dialog'
 import { Icon } from '../components/Icon'
 import { MiniBar } from '../components/Status'
 import { href, type Route } from '../route'
+import { Crumbs } from '../components/Crumbs'
+import { MoreMenu } from '../components/MoreMenu'
 
 interface PlanRow {
   id: number
@@ -184,7 +186,7 @@ function NewPlanDialog({ projectId, open, onClose }: {
   )
 }
 
-function PlanDetailView({ route }: { route: Route }) {
+function PlanDetailView({ route, projectName }: { route: Route; projectName: string }) {
   const client = useQueryClient()
   const { data: catalog } = useCatalog()
   const removePlan = useDeletePlan(route.project)
@@ -213,10 +215,9 @@ function PlanDetailView({ route }: { route: Route }) {
 
   return (
     <main className="main">
-      <div className="crumbs">
-        <a href={href({ page: 'plans', project: route.project })}>Test Planları</a>
-        <Icon name="chevron-right" size={12} />{plan.name}
-      </div>
+      <Crumbs projectId={route.project} projectName={projectName} trail={[
+        { label: 'Test Planları', href: href({ page: 'plans', project: route.project }) },
+      ]} />
       <div className="page-title">
         <span className="idbadge run">P{plan.id}</span>
         <h1>{plan.name}</h1>
@@ -225,9 +226,10 @@ function PlanDetailView({ route }: { route: Route }) {
           <button onClick={() => complete.mutate(!plan.is_completed)}>
             {plan.is_completed ? 'Yeniden aç' : 'Planı tamamla'}
           </button>
-          <button className="ghost danger" onClick={() => setDeleting(true)}>
-            <Icon name="trash" size={13} /> Planı sil
-          </button>
+          <MoreMenu items={[
+            { label: 'Planı sil', icon: 'trash', danger: true,
+              onClick: () => setDeleting(true) },
+          ]} />
         </div>
       </div>
 
@@ -305,7 +307,7 @@ export function Plans({ route, projectName }: { route: Route; projectName: strin
     enabled: !!route.project,
   })
 
-  if (route.plan) return <PlanDetailView route={route} />
+  if (route.plan) return <PlanDetailView route={route} projectName={projectName} />
 
   if (isLoading) {
     return <main className="main"><div className="skeleton" style={{ width: 260 }} /></main>
@@ -313,7 +315,7 @@ export function Plans({ route, projectName }: { route: Route; projectName: strin
 
   return (
     <main className="main">
-      <div className="crumbs"><b>{projectName}</b></div>
+      <Crumbs projectId={route.project} projectName={projectName} />
       <div className="page-title">
         <h1>Test Planları</h1>
         <span className="faint small">{plans.length} plan</span>

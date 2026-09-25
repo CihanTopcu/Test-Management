@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import {
   useActivitySeries, useCatalog, useCoverage, useDefects, useDistribution,
 } from '../api/hooks'
-import { statusColor, statusLabel } from '../components/Status'
+import { inkOn, statusColor, statusLabel } from '../components/Status'
 import { QualityReport } from '../components/QualityReport'
 import { href, type Route } from '../route'
+import { Crumbs } from '../components/Crumbs'
 
 const PALETTE = ['#1c6ea4', '#6ca644', '#d99a2b', '#a9457c', '#4a8fb5',
                  '#8a8a8a', '#5c7cb0', '#b8703f']
@@ -126,7 +127,7 @@ export function Reports({ route, projectName }: { route: Route; projectName: str
 
   return (
     <main className="main">
-      <div className="crumbs"><b>{projectName}</b></div>
+      <Crumbs projectId={route.project} projectName={projectName} />
       <div className="page-title">
         <h1>Raporlar</h1>
         <span className="faint small">Canlı veriden üretilir</span>
@@ -228,22 +229,25 @@ export function Reports({ route, projectName }: { route: Route; projectName: str
               Sonuçlarda hata referansı girilmemiş.
             </span>
           ) : (
-            <table>
+            // fixed layout: with auto columns a long test title pushed the
+            // count and the link out past the edge of the card
+            <table className="grid">
               <tbody>
                 {defects.items.slice(0, 12).map((d) => (
                   <tr key={d.ref} style={{ cursor: 'default' }}>
-                    <td style={{ width: 130 }}><b>{d.ref}</b></td>
-                    <td className="small muted">
-                      {d.tests[0]?.title?.slice(0, 60)}
-                      {d.tests.length > 1 && <span className="faint"> +{d.tests.length - 1}</span>}
+                    <td style={{ width: 110 }}><b>{d.ref}</b></td>
+                    <td className="small muted ellipsis" title={d.tests[0]?.title}>
+                      {d.tests.length > 1 && <span className="faint">+{d.tests.length - 1} · </span>}
+                      {d.tests[0]?.title}
                     </td>
-                    <td className="nowrap" style={{ width: 70, textAlign: 'right' }}>
+                    <td className="nowrap" style={{ width: 64, textAlign: 'right' }}>
                       <span className="badge"
-                            style={{ background: statusColor(catalog, d.tests[0]?.status_id) }}>
+                            style={{ background: statusColor(catalog, d.tests[0]?.status_id),
+                                     color: inkOn(statusColor(catalog, d.tests[0]?.status_id)) }}>
                         {d.count}
                       </span>
                     </td>
-                    <td style={{ width: 70 }}>
+                    <td className="nowrap" style={{ width: 76 }}>
                       {d.tests[0] && (
                         <a className="small"
                            href={href({ page: 'runs', project: route.project,

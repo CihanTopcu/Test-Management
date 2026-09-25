@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useCaseExplorer, useCatalog, useSuites } from '../api/hooks'
 import { Icon } from '../components/Icon'
 import { href, type Route } from '../route'
+import { Crumbs } from '../components/Crumbs'
 
 /**
  * The case library across a whole project, filtered.
@@ -22,7 +23,7 @@ const EXECUTED: Record<string, string> = {
   yes: 'en az bir kez koşulmuş', no: 'hiç koşulmamış',
 }
 const SORTS: Record<string, string> = {
-  title: 'başlık', runs: 'en çok koşulan', updated: 'son değişen', id: 'id',
+  title: 'Başlık', runs: 'En çok koşulan', updated: 'Son değişen', id: 'ID',
 }
 
 export function CaseExplorer({ route, projectName }: {
@@ -74,12 +75,9 @@ export function CaseExplorer({ route, projectName }: {
 
   return (
     <main className="main explorer">
-      <div className="crumbs">
-        <a href={href({ page: 'reports', project: route.project })}>{projectName}</a>
-        {' › '}<b>Case gezgini</b>
-      </div>
+      <Crumbs projectId={route.project} projectName={projectName} />
       <div className="page-title">
-        <h1>Case&apos;ler</h1>
+        <h1>Case Gezgini</h1>
         <span className="faint small">
           {isLoading ? 'yükleniyor…' : `${total.toLocaleString('tr-TR')} case`}
           {isFetching && !isLoading && ' · yenileniyor'}
@@ -131,12 +129,16 @@ export function CaseExplorer({ route, projectName }: {
           <option value="with">Gereksinime bağlı</option>
         </select>
 
-        <select value={filters.sort ?? 'title'}
-                onChange={(e) => go({ sort: e.target.value })}>
-          {Object.entries(SORTS).map(([k, label]) => (
-            <option key={k} value={k}>{label}</option>
-          ))}
-        </select>
+        {/* the order is not a filter, so it is named and set apart */}
+        <label className="sortby">
+          <span>Sırala</span>
+          <select value={filters.sort ?? 'title'}
+                  onChange={(e) => go({ sort: e.target.value })}>
+            {Object.entries(SORTS).map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {chips.length > 0 && (

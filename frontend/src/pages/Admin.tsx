@@ -10,6 +10,7 @@ import { ProjectAdmin } from '../components/ProjectAdmin'
 import { Icon } from '../components/Icon'
 import { Tokens } from './Tokens'
 import type { CustomField, UserAdmin } from '../api/types'
+import { inkOn } from '../components/Status'
 
 type Tab = 'ozet' | 'projeler' | 'kullanicilar' | 'alanlar' | 'listeler'
   | 'tokenlar' | 'denetim' | 'esitleme'
@@ -346,7 +347,8 @@ export function Admin() {
                     </td>
                     <td>
                       <span className="badge"
-                            style={{ background: u.is_active ? 'var(--passed)' : 'var(--blocked)' }}>
+                            style={{ background: u.is_active ? 'var(--passed)' : 'var(--blocked)',
+                                     color: u.is_active ? '#0a0f1e' : undefined }}>
                         {u.is_active ? 'Aktif' : 'Pasif'}
                       </span>
                     </td>
@@ -426,7 +428,8 @@ export function Admin() {
             <div className="chiprow">
               {catalog.statuses.map((s) => (
                 <span className="badge" key={s.id}
-                      style={{ background: s.color ?? 'var(--untested)' }}>
+                      style={{ background: s.color ?? 'var(--untested)',
+                               color: inkOn(s.color ?? '') }}>
                   {s.label}
                 </span>
               ))}

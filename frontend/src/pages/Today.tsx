@@ -1,6 +1,6 @@
 import { useMe, useToday } from '../api/hooks'
 import { Icon } from '../components/Icon'
-import { projectColor } from '../projectColor'
+import { projectVars } from '../projectColor'
 import { href } from '../route'
 
 /**
@@ -34,12 +34,7 @@ function when(value: string) {
 }
 
 function ProjectTag({ id, name }: { id: number; name: string }) {
-  const colour = projectColor(id)
-  return (
-    <span className="ptag" style={{
-      color: colour.ink, background: colour.soft,
-    }}>{name}</span>
-  )
+  return <span className="ptag projvars" style={projectVars(id)}>{name}</span>
 }
 
 export function Today() {
@@ -70,12 +65,10 @@ export function Today() {
       {data.projects.length > 0 && (
         <div className="projstrip">
           {data.projects.map((p) => {
-            const colour = projectColor(p.project_id)
             return (
-              <a key={p.project_id} className="projcard"
+              <a key={p.project_id} className="projcard projvars"
                  href={href({ page: 'overview', project: p.project_id })}
-                 style={{ '--project': colour.ink,
-                          '--project-soft': colour.soft } as React.CSSProperties}>
+                 style={projectVars(p.project_id)}>
                 <span className="edge" />
                 <span className="name">{p.name}</span>
                 <span className="meta">
@@ -139,7 +132,10 @@ export function Today() {
                                    background: 'var(--warn)' }} />
                   </span>
                   <span className="when">
-                    {r.is_completed ? 'tamamlandı' : `%${r.percent}`}
+                    {/* completion, not pass rate: said in words, because a bare
+                        "%100" next to an all-red bar read as "all passed" */}
+                    {r.is_completed ? 'tamamlandı'
+                      : `${(r.total - r.untested).toLocaleString('tr-TR')}/${r.total.toLocaleString('tr-TR')} sonuçlandı`}
                     {r.last_result_on && (
                       <span className="faint"> · {when(r.last_result_on)}</span>
                     )}

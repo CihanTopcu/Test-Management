@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
   ActivityByUserOut, ActivityItem, AdminSummary, Attachment, AuditPage,
@@ -262,13 +262,36 @@ export const useToday = () =>
     staleTime: 60 * 1000,
   })
 
-/** TestRail sync health; refreshed while the admin page is open. */
+/** TestRail sync health; refreshed while the admin page is open, and
+ *  every few seconds while a pass is queued or running so the button's
+ *  outcome shows up without a reload. */
 export const useSyncStatus = () =>
   useQuery({
     queryKey: ['sync-status'],
     queryFn: () => api.get<SyncStatusOut>('/api/admin/sync'),
-    refetchInterval: 60_000,
+    refetchInterval: (query) =>
+      query.state.data?.runs.some((r) => r.status === 'queued' || r.status === 'running')
+        ? 5_000 : 60_000,
   })
+
+/** Ask the sync service for a pass now; it picks the request up within
+ *  TESTRAIL_SYNC_POLL seconds. */
+export const useRequestSync = () => {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<{ id: number; status: string }>('/api/admin/sync', {}),
+    onSettled: () => client.invalidateQueries({ queryKey: ['sync-status'] }),
+  })
+}
+
+/** Withdraw a request that has not started yet. */
+export const useCancelSync = () => {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/admin/sync/${id}`),
+    onSettled: () => client.invalidateQueries({ queryKey: ['sync-status'] }),
+  })
+}
 
 /* ---- personal settings --------------------------------------------------- */
 
@@ -387,6 +410,32 @@ export const useRuns = (projectId?: number, archived = false, q = '') =>
       if (q) params.set('q', q)
       return api.get<Run[]>(`/api/projects/${projectId}/runs?${params}`)
     },
+    enabled: !!projectId,
+    placeholderData: (prev) => prev,
+  })
+
+/** Rows per page on the runs screen. */
+export const RUN_PAGE = 200
+
+/**
+ * The runs screen, a page at a time. It used to fetch one fixed batch of
+ * 300 and say nothing about the rest, so a project with 374 live runs
+ * showed 300 of them and hid the oldest 74.
+ */
+export const useRunPages = (projectId?: number, archived = false, q = '') =>
+  useInfiniteQuery({
+    // projectId second, so the existing ['runs', projectId] invalidations reach it
+    queryKey: ['runs', projectId, 'pages', archived, q],
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({
+        limit: String(RUN_PAGE), offset: String(pageParam) })
+      if (archived) params.set('archived', 'true')
+      if (q) params.set('q', q)
+      return api.get<Run[]>(`/api/projects/${projectId}/runs?${params}`)
+    },
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) =>
+      last.length < RUN_PAGE ? undefined : pages.length * RUN_PAGE,
     enabled: !!projectId,
     placeholderData: (prev) => prev,
   })

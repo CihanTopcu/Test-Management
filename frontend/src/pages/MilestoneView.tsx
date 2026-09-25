@@ -9,6 +9,8 @@ import { Donut, Legend, MiniBar, slices } from '../components/Status'
 import { RichText } from '../components/RichText'
 import type { Run } from '../api/types'
 import { href, type Route } from '../route'
+import { Crumbs } from '../components/Crumbs'
+import { MoreMenu } from '../components/MoreMenu'
 
 /**
  * One milestone: what it is due, what is running under it, where it stands.
@@ -117,22 +119,14 @@ export function MilestoneView({ route, projectName }: {
 
   return (
     <main className="main">
-      <div className="crumbs">
-        <b>{projectName}</b>
-        <Icon name="chevron-right" size={12} />
-        <a href={href({ page: 'milestones', project: route.project })}>
-          Milestone’lar
-        </a>
-        {milestone.parent_id && (
-          <>
-            <Icon name="chevron-right" size={12} />
-            <a href={href({ page: 'milestones', project: route.project,
-                            milestone: milestone.parent_id })}>
-              {milestones.find((m) => m.id === milestone.parent_id)?.name}
-            </a>
-          </>
-        )}
-      </div>
+      <Crumbs projectId={route.project} projectName={projectName} trail={[
+        { label: 'Milestone’lar', href: href({ page: 'milestones', project: route.project }) },
+        ...(milestone.parent_id ? [{
+          label: milestones.find((m) => m.id === milestone.parent_id)?.name ?? 'Üst milestone',
+          href: href({ page: 'milestones', project: route.project,
+                       milestone: milestone.parent_id }),
+        }] : []),
+      ]} />
 
       <div className="page-title">
         <span className="idbadge"><Icon name="flag" size={12} /></span>
@@ -169,9 +163,10 @@ export function MilestoneView({ route, projectName }: {
                 <Icon name="check-circle" size={13} />
                 {milestone.is_completed ? ' Yeniden aç' : ' Tamamlandı'}
               </button>
-              <button className="ghost danger" onClick={() => setDeleting(true)}>
-                <Icon name="trash" size={13} /> Sil
-              </button>
+              <MoreMenu items={[
+                { label: 'Milestone’ı sil', icon: 'trash', danger: true,
+                  onClick: () => setDeleting(true) },
+              ]} />
             </>
           )}
         </div>

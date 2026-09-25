@@ -85,7 +85,8 @@ export function Tokens() {
                   <td className="cid">{t.prefix}…</td>
                   <td>
                     <span className="badge"
-                          style={{ background: t.is_active ? 'var(--passed)' : 'var(--blocked)' }}>
+                          style={{ background: t.is_active ? 'var(--passed)' : 'var(--blocked)',
+                                   color: t.is_active ? '#0a0f1e' : undefined }}>
                       {t.is_active ? 'Aktif' : 'İptal'}
                     </span>
                   </td>

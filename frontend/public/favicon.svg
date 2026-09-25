@@ -1,16 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
   <!--
-    Kanıt. A check leaving its box through the open corner.
-
-    On an indigo tile rather than the dark one: a favicon sits on whatever
-    colour the browser's tab strip happens to be, and only a high-contrast
-    tile is legible on both a light and a dark one.
+    DGTest: the DGPays disc, same geometry as components/Logo.tsx. Bands
+    and gaps are 48/7 tall; the two middle bands break at a rounded gap.
   -->
-  <rect width="24" height="24" rx="5.5" fill="#4F46E5"/>
-  <g fill="none" stroke="#fff" stroke-width="2.1"
-     stroke-linecap="round" stroke-linejoin="round">
-    <path d="M15.2 6.4H8.8A2.4 2.4 0 0 0 6.4 8.8v6.4a2.4 2.4 0 0 0 2.4 2.4h6.4
-             a2.4 2.4 0 0 0 2.4-2.4v-2"/>
-    <path d="M9.4 12.1 11.4 14.1 17.9 7.4"/>
+  <defs>
+    <linearGradient id="g" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#0ee6cf"/>
+      <stop offset="0.55" stop-color="#00a0ec"/>
+      <stop offset="1" stop-color="#0466ff"/>
+    </linearGradient>
+    <clipPath id="c"><circle cx="24" cy="24" r="24"/></clipPath>
+  </defs>
+  <g clip-path="url(#c)" fill="url(#g)">
+    <rect x="-20" y="0" width="88" height="6.857" rx="3.43"/>
+    <rect x="-20" y="13.714" width="31.6" height="6.857" rx="3.43"/>
+    <rect x="18.8" y="13.714" width="49.2" height="6.857" rx="3.43"/>
+    <rect x="-20" y="27.429" width="49.5" height="6.857" rx="3.43"/>
+    <rect x="36.4" y="27.429" width="31.6" height="6.857" rx="3.43"/>
+    <rect x="-20" y="41.143" width="88" height="6.857" rx="3.43"/>
   </g>
 </svg>

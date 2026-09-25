@@ -1,6 +1,6 @@
 /* Inter, shipped with the app rather than linked from Google.
  *
- * The design this follows loads fonts.googleapis.com. Kanıt runs on an
+ * The design this follows loads fonts.googleapis.com. The app runs on an
  * on-prem server that may have no route to the internet, and a UI that
  * silently falls back to Segoe on the one machine that matters is not the
  * design anybody approved.

@@ -58,11 +58,19 @@ export function projectColor(projectId?: number): ProjectColor {
   return PALETTE[projectId % PALETTE.length]
 }
 
-/** CSS custom properties to hang on a container. */
-export function projectVars(projectId?: number, dark = false) {
+/**
+ * CSS custom properties to hang on a container that also carries the
+ * `projvars` class. Both pairs go on the element and the stylesheet picks
+ * one per theme, so nothing has to re-render when the theme changes -- and
+ * nobody can forget to pass the theme in, which is how the dark rail ended
+ * up wearing the light wash.
+ */
+export function projectVars(projectId?: number) {
   const c = projectColor(projectId)
   return {
-    '--project': dark ? c.darkInk : c.ink,
-    '--project-soft': dark ? c.darkSoft : c.soft,
+    '--project-light': c.ink,
+    '--project-soft-light': c.soft,
+    '--project-dark': c.darkInk,
+    '--project-soft-dark': c.darkSoft,
   } as React.CSSProperties
 }

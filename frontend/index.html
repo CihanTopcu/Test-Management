@@ -4,10 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="theme-color" content="#14161C" />
+    <meta name="theme-color" content="#05070d" />
     <meta name="description"
-          content="Kanıt — DGPays test yönetim sistemi" />
-    <title>Kanıt · DGPays</title>
+          content="DGTest — DGPays yazılım test yönetimi" />
+    <title>DGTest · Yazılım Test Yönetimi</title>
+    <script>
+      // Dark is the default; a saved light choice is applied before the first
+      // paint so it does not flash navy on every load. Mirrors useTheme().
+      try {
+        if (localStorage.getItem('tm.theme-choice') === 'light')
+          document.documentElement.dataset.theme = 'light'
+      } catch (e) { /* private window: stay dark */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

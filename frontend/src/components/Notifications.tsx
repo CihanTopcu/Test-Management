@@ -44,7 +44,7 @@ export function Notifications() {
   const items = data?.items ?? []
 
   return (
-    <div className="omnibox" style={{ width: 'auto' }} ref={box}>
+    <div className="omnibox notif" style={{ width: 'auto' }} ref={box}>
       <button className="ghost icon-only" title="Bildirimler"
               onClick={() => setOpen(!open)} style={{ position: 'relative' }}>
         <Icon name="clock" size={16} />

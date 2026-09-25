@@ -1,1 +1,1 @@
-"""DGPays Test Management backend."""
+"""DGTest backend -- DGPays yazilim test yonetimi."""

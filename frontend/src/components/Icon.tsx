@@ -11,7 +11,7 @@ export type IconName =
   | 'chevron-down' | 'chevron-up' | 'sun' | 'moon' | 'logout'
   | 'download' | 'upload'
   | 'filter' | 'edit' | 'trash' | 'folder' | 'file' | 'user' | 'key'
-  | 'external' | 'warning' | 'clock' | 'sparkle'
+  | 'external' | 'warning' | 'clock' | 'sparkle' | 'more'
 
 const PATHS: Record<IconName, string> = {
   'grid': 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
@@ -44,6 +44,8 @@ const PATHS: Record<IconName, string> = {
   'warning': 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01',
   'clock': 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2',
   'sparkle': 'M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z',
+  // three dots: zero-length strokes, so the round caps draw them
+  'more': 'M5 12h.01M12 12h.01M19 12h.01',
 }
 
 export function Icon({ name, size = 16, className = '', strokeWidth = 1.8 }: {

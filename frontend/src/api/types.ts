@@ -175,7 +175,7 @@ export interface SyncRun {
   id: number
   started_on: string
   finished_on: string | null
-  status: string
+  status: 'queued' | 'running' | 'ok' | 'failed' | 'cancelled' | string
   window_from: string | null
   trigger: string
   counts: Record<string, unknown>
@@ -186,6 +186,8 @@ export interface SyncStatusOut {
   enabled: boolean
   interval_hours: number
   overdue: boolean | null
+  /** a manual request the sync service has not picked up for a while */
+  stalled: boolean
   last_ok: string | null
   runs: SyncRun[]
 }

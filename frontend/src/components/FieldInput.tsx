@@ -135,7 +135,7 @@ export function FieldValue({ field, value, catalog, users }: {
   catalog: Catalog
   users: User[]
 }) {
-  if (isEmptyValue(value)) return <span className="faint">None</span>
+  if (isEmptyValue(value)) return <span className="faint">—</span>
   switch (field.field_type) {
     case 'text':
       return <RichText value={String(value)} />

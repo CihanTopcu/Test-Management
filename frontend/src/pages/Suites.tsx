@@ -1,6 +1,7 @@
 import { useProjectStats, useSuites } from '../api/hooks'
 import { Icon } from '../components/Icon'
 import { href, type Route } from '../route'
+import { Crumbs } from '../components/Crumbs'
 
 /** Suite index, in the shape TestRail shows it: one card per suite with the
  *  counts that tell you where the work actually is. */
@@ -14,7 +15,7 @@ export function Suites({ route, projectName }: { route: Route; projectName: stri
 
   return (
     <main className="main">
-      <div className="crumbs"><b>{projectName}</b></div>
+      <Crumbs projectId={route.project} projectName={projectName} />
       <div className="page-title">
         <h1>Test Suite’leri ve Case’ler</h1>
         {stats && (
