@@ -787,7 +787,7 @@ def fix_sequences(session):
     TestRail hands out next: a case created here and the next one created in
     TestRail got the same number, and the next sync overwrote ours.
     """
-    from app.bootstrap import NATIVE_ID_BASE
+    from app.bootstrap import NATIVE_ID_BASE, imported_by_id
 
     log("== sequence duzeltme ==")
     for table in Base.metadata.tables.values():
@@ -795,10 +795,10 @@ def fix_sequences(session):
         if len(pk) != 1 or not pk[0].autoincrement:
             continue
         col = pk[0].name
+        floor = NATIVE_ID_BASE if imported_by_id(table) else 1
         session.execute(text(
             f"SELECT setval(pg_get_serial_sequence('{table.name}', '{col}'), "
-            f"GREATEST((SELECT COALESCE(MAX({col}), 0) FROM {table.name}), "
-            f"{NATIVE_ID_BASE}))"
+            f"GREATEST((SELECT COALESCE(MAX({col}), 0) FROM {table.name}), {floor}))"
         ))
     session.commit()
     log("  ok")

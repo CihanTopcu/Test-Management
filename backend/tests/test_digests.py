@@ -69,17 +69,36 @@ def subscribe(app_client, admin):
     return _make
 
 
-def test_an_empty_digest_is_not_sent(app_client, admin, project, subscribe):
-    """Nobody reads the fourth 'no failures' e-mail."""
+def test_an_empty_digest_is_not_sent(app_client, admin, project, subscribe, db):
+    """Nobody reads the fourth 'no failures' e-mail.
+
+    Asserted on this subscription alone: dispatch reports totals across
+    every subscription in the database, and other tests leave behind ones
+    that do have something to say -- which is why this used to fail only
+    when the whole suite ran."""
+    from sqlalchemy import select
+
+    from app.models import Notification, ReportSubscription
+
     sub = subscribe(kind="failures", project_id=project["id"])
     preview = app_client.post(
         f"/api/report-subscriptions/{sub['id']}/preview", headers=admin).json()
     assert preview["empty"] is True
+    before = db.scalar(select(Notification.id).order_by(Notification.id.desc()).limit(1)) or 0
 
     result = app_client.post("/api/report-subscriptions/dispatch",
                              headers=admin).json()
-    assert result["sent"] == 0
     assert result["empty"] >= 1
+
+    db.expire_all()
+    row = db.get(ReportSubscription, sub["id"])
+    # the window moved on, so the next digest does not re-report this period
+    assert row.last_sent_on is not None
+    # but nothing was written for it
+    new = db.scalars(select(Notification).where(
+        Notification.id > before, Notification.kind == "digest",
+        Notification.user_id == row.user_id)).all()
+    assert all(project["name"] not in n.body for n in new)
 
 
 def test_failures_digest_names_the_tests(app_client, admin, project, suite,

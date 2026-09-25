@@ -141,11 +141,25 @@ LATE_COLUMNS = [
 # id, would have overwritten whatever this application had created there.
 NATIVE_ID_BASE = 1_000_000_000
 
+# the two tables the loader also writes by TestRail's id without carrying a
+# testrail_id column of their own
+_IMPORTED_WITHOUT_TESTRAIL_ID = {"case_history", "plan_entries"}
+
+
+def imported_by_id(table) -> bool:
+    """Tables the TestRail loader writes by id -- the only ones that need
+    the separate range. Internal ones (sync runs, notifications, the audit
+    log) keep ordinary small ids."""
+    return "testrail_id" in table.c or table.name in _IMPORTED_WITHOUT_TESTRAIL_ID
+
 
 def ensure_native_id_range() -> None:
-    """Every identity sequence at or past NATIVE_ID_BASE. Idempotent."""
+    """Every sequence of an imported table at or past NATIVE_ID_BASE.
+    Idempotent."""
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
         for table in Base.metadata.sorted_tables:
+            if not imported_by_id(table):
+                continue
             pk = list(table.primary_key.columns)
             if len(pk) != 1 or not pk[0].autoincrement:
                 continue
