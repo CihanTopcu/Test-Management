@@ -18,6 +18,7 @@ import { Plans } from './pages/Plans'
 import { Reports } from './pages/Reports'
 import { Runs } from './pages/Runs'
 import { Settings } from './pages/Settings'
+import { SetPassword } from './pages/SetPassword'
 import { SharedSteps } from './pages/SharedSteps'
 import { SuiteView } from './pages/SuiteView'
 import { Today } from './pages/Today'
@@ -255,6 +256,17 @@ function Shell() {
 
 export default function App() {
   const [authed, setAuthed] = useState(() => !!getToken())
+  // an invitation or reset link works whether or not someone is signed in
+  // on this browser -- it may well be the administrator's own machine
+  const [settingPassword, setSettingPassword] = useState(
+    () => location.hash.startsWith('#/set-password'))
+  if (settingPassword) {
+    return <SetPassword onDone={() => {
+      setSettingPassword(false)
+      setAuthed(true)
+      location.hash = '#/today'
+    }} />
+  }
   if (!authed) return <Login onDone={() => setAuthed(true)} />
   return <Shell />
 }

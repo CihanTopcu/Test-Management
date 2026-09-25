@@ -862,6 +862,16 @@ button.big { padding: 13px; font-size: 14.5px; width: 100%; justify-content: cen
   text-transform: uppercase; color: var(--text-faint);
 }
 
+/* one card and nothing beside it: set-password, forgot */
+.signin-body.single { grid-template-columns: minmax(0, 420px); justify-content: center; }
+.signin-card p { font-size: 14px; line-height: 1.6; }
+a.button-link {
+  display: inline-flex; justify-content: center; padding: 11px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  color: #fff; font-weight: 500;
+}
+a.button-link:hover { text-decoration: none; border-color: var(--accent); }
+
 @media (max-width: 900px) {
   .signin-body { grid-template-columns: minmax(0, 1fr); padding-top: 32px; }
   .signin-hero p, .signin-hero .pills { display: none; }

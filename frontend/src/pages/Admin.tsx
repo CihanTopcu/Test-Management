@@ -7,7 +7,7 @@ import { Dialog } from '../components/Dialog'
 import { AuditLog } from '../components/AuditLog'
 import { SyncStatus } from '../components/SyncStatus'
 import { ProjectAdmin } from '../components/ProjectAdmin'
-import { GroupAdminTab, UserAccessTable, UserGroups } from '../components/AccessAdmin'
+import { GroupAdminTab, InvitePanel, UserAccessTable, UserGroups } from '../components/AccessAdmin'
 import { Icon } from '../components/Icon'
 import { Tokens } from './Tokens'
 import type { CustomField, UserAdmin } from '../api/types'
@@ -78,15 +78,14 @@ function UserDialog({ user, onClose, onCreated }: {
           </select>
         </div>
         <div className="field">
-          <label>{isNew ? 'Parola' : 'Yeni parola (boş bırakılırsa değişmez)'}</label>
+          <label>{isNew ? 'Parola (isteğe bağlı)' : 'Yeni parola (boş bırakılırsa değişmez)'}</label>
           <input type="password" value={password}
                  onChange={(e) => setPassword(e.target.value)} />
-          {!isNew && row && !row.has_password && (
-            <div className="small faint" style={{ marginTop: 4 }}>
-              Bu hesabın parolası yok — TestRail parolaları API ile taşınamaz,
-              giriş yapabilmesi için burada bir parola tanımlanmalı.
-            </div>
-          )}
+          <div className="small faint" style={{ marginTop: 4 }}>
+            {isNew
+              ? 'Boş bırakın: kaydettikten sonra kişiye kendi parolasını belirleyeceği bir davet bağlantısı gönderirsiniz.'
+              : 'Parolayı sizin yazmanız gerekmez; aşağıdaki bağlantıyla kişi kendisi belirler.'}
+          </div>
         </div>
         <label className="row small" style={{ gap: 8 }}>
           <input type="checkbox" checked={active} style={{ width: 'auto' }}
@@ -106,7 +105,11 @@ function UserDialog({ user, onClose, onCreated }: {
           reason most people open this dialog */}
       {!isNew && row && (
         <div className="stack">
-          <div className="section-rule" style={{ marginTop: 0 }}>Gruplar</div>
+          <div className="section-rule" style={{ marginTop: 0 }}>
+            {row.has_password ? 'Parola' : 'Davet'}
+          </div>
+          <InvitePanel userId={row.id} hasPassword={row.has_password} active={row.is_active} />
+          <div className="section-rule">Gruplar</div>
           <UserGroups userId={row.id} />
           <div className="section-rule">Projeler ve yetkiler</div>
           <UserAccessTable userId={row.id} />

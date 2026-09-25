@@ -51,6 +51,42 @@ def notify(session: Session, user_id: int, kind: str, subject: str,
     return row
 
 
+def _smtp():
+    """An authenticated connection, as a context manager."""
+    settings = get_settings()
+    server = (smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port)
+              if settings.smtp_ssl
+              else smtplib.SMTP(settings.smtp_host, settings.smtp_port))
+    if settings.smtp_starttls and not settings.smtp_ssl:
+        server.starttls()
+    if settings.smtp_user:
+        server.login(settings.smtp_user, settings.smtp_password)
+    return server
+
+
+def send_now(to: str, subject: str, body: str) -> tuple[bool, str | None]:
+    """Send one message immediately, outside the preference-driven queue.
+
+    For mail a person cannot opt out of -- an invitation, a password reset.
+    Returns (sent, reason if not); never raises, because the caller has a
+    fallback (showing the link to an administrator) and needs to know.
+    """
+    settings = get_settings()
+    if not settings.smtp_host:
+        return False, "SMTP yapılandırılmamış"
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = settings.smtp_from
+    message["To"] = to
+    message.set_content(body)
+    try:
+        with _smtp() as server:
+            server.send_message(message)
+        return True, None
+    except Exception as exc:  # the caller reports it; the request still succeeds
+        return False, f"e-posta gönderilemedi: {str(exc)[:200]}"
+
+
 def send_pending(session: Session, limit: int = 50) -> dict:
     """Deliver queued e-mail. Safe to call repeatedly; failures stay queued
     with the reason attached."""
@@ -67,14 +103,7 @@ def send_pending(session: Session, limit: int = 50) -> dict:
 
     sent = failed = 0
     try:
-        server = (smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port)
-                  if settings.smtp_ssl
-                  else smtplib.SMTP(settings.smtp_host, settings.smtp_port))
-        with server:
-            if settings.smtp_starttls and not settings.smtp_ssl:
-                server.starttls()
-            if settings.smtp_user:
-                server.login(settings.smtp_user, settings.smtp_password)
+        with _smtp() as server:
             for row in rows:
                 user = session.get(User, row.user_id)
                 if user is None or not user.email:

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
-  useAdminGroups, useAdminUsers, useDeleteGroup, useProjects, useRemoveMember,
-  useRoles, useSaveGroup, useSaveMember, useUserAccess,
+  useAdminGroups, useAdminUsers, useDeleteGroup, useInviteUser, useProjects,
+  useRemoveMember, useRoles, useSaveGroup, useSaveMember, useUserAccess,
 } from '../api/hooks'
 import type { GroupAdmin, Role, UserAccessRow } from '../api/types'
 import { Confirm } from './Confirm'
@@ -282,5 +282,63 @@ export function GroupAdminTab() {
                onConfirm={() => deleting && remove.mutate(deleting.id, {
                  onSuccess: () => setDeleting(null) })} />
     </>
+  )
+}
+
+
+/**
+ * The password link, instead of the administrator typing somebody's
+ * password and passing it on by chat.
+ */
+export function InvitePanel({ userId, hasPassword, active }: {
+  userId: number
+  hasPassword: boolean
+  active: boolean
+}) {
+  const invite = useInviteUser()
+  const [copied, setCopied] = useState(false)
+  const result = invite.data
+
+  if (!active) {
+    return <div className="faint small">Pasif hesaba parola bağlantısı gönderilemez.</div>
+  }
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <div className="small muted">
+        {hasPassword
+          ? 'Kişi parolasını unuttuysa, kendisinin yeni bir parola belirleyeceği bir bağlantı oluşturun.'
+          : 'Bu hesabın parolası yok. Parolayı siz yazmak yerine kişiye, kendi parolasını belirleyeceği bir davet bağlantısı gönderin.'}
+      </div>
+      <div>
+        <button className={hasPassword ? '' : 'primary'} disabled={invite.isPending}
+                onClick={() => { setCopied(false); invite.mutate(userId) }}>
+          <Icon name="key" size={13} />
+          {invite.isPending ? 'Oluşturuluyor…' : hasPassword ? 'Parola sıfırlama bağlantısı' : 'Davet bağlantısı oluştur'}
+        </button>
+      </div>
+      {invite.isError && <div className="error">{(invite.error as Error).message}</div>}
+      {result && (
+        <div className={result.emailed ? 'notice' : 'panel'} style={{ padding: 12 }}>
+          <div className="small" style={{ marginBottom: 8 }}>
+            {result.emailed
+              ? 'Bağlantı e-postayla gönderildi. Gerekirse buradan da iletebilirsiniz:'
+              : `E-posta gönderilmedi (${result.detail ?? 'bilinmeyen neden'}). Bağlantıyı kişiye siz iletin:`}
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <input readOnly value={result.link} onFocus={(e) => e.target.select()}
+                   style={{ fontFamily: 'var(--mono)', fontSize: 12 }} />
+            <button onClick={() => {
+              navigator.clipboard?.writeText(result.link).then(() => setCopied(true))
+            }}>
+              {copied ? 'Kopyalandı' : 'Kopyala'}
+            </button>
+          </div>
+          <div className="faint small" style={{ marginTop: 6 }}>
+            Tek kullanımlık, {result.expires_in_days} gün geçerli. Yeni bir bağlantı
+            oluşturmak bunu geçersiz kılar.
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

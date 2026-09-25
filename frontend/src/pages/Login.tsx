@@ -10,6 +10,24 @@ export function Login({ onDone }: { onDone: () => void }) {
   const [remember, setRemember] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // 'forgot' asks for an address; 'sent' says what happens next
+  const [mode, setMode] = useState<'login' | 'forgot' | 'sent'>('login')
+  const [mailConfigured, setMailConfigured] = useState(true)
+
+  const requestReset = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      const reply = await api.post<{ mail: boolean }>('/api/auth/forgot', { email })
+      setMailConfigured(reply.mail)
+      setMode('sent')
+    } catch {
+      setError('İstek gönderilemedi, biraz sonra tekrar deneyin.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -51,6 +69,40 @@ export function Login({ onDone }: { onDone: () => void }) {
           </div>
         </section>
 
+        {mode === 'sent' ? (
+          <div className="signin-card">
+            <div className="eyebrow">Parola</div>
+            <h2>İsteğiniz alındı</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              {mailConfigured
+                ? `${email} adresi kayıtlıysa, bir saat geçerli bir parola sıfırlama bağlantısı gönderildi.`
+                : 'Bu kurulumda e-posta sunucusu tanımlı değil. Yöneticinizden, Yönetim → Kullanıcılar ekranından size bir parola bağlantısı oluşturmasını isteyin.'}
+            </p>
+            <button type="button" onClick={() => setMode('login')}>Girişe dön</button>
+          </div>
+        ) : mode === 'forgot' ? (
+          <form className="signin-card" onSubmit={requestReset}>
+            <div className="eyebrow">Parola</div>
+            <h2>Parolanızı sıfırlayın</h2>
+            <p className="muted" style={{ margin: '-6px 0 0' }}>
+              Hesabınızın e-posta adresini yazın; parolanızı belirlemeniz için
+              bir bağlantı gönderelim.
+            </p>
+            <label className="field">
+              <span>E-posta</span>
+              <input type="email" value={email} required autoFocus
+                     autoComplete="username" placeholder="ad.soyad@dgpays.com"
+                     onChange={(e) => setEmail(e.target.value)} />
+            </label>
+            {error && <div className="error">{error}</div>}
+            <button className="primary big" type="submit" disabled={busy}>
+              {busy ? 'Gönderiliyor…' : 'Bağlantı gönder'}
+            </button>
+            <button type="button" className="ghost" onClick={() => { setError(''); setMode('login') }}>
+              Girişe dön
+            </button>
+          </form>
+        ) : (
         <form className="signin-card" onSubmit={submit}>
           <div className="eyebrow">Giriş</div>
           <h2>Hesabınıza giriş yapın</h2>
@@ -77,7 +129,8 @@ export function Login({ onDone }: { onDone: () => void }) {
             </label>
             <a href="#" onClick={(e) => {
               e.preventDefault()
-              setError('Parolanızı sıfırlamak için sistem yöneticinize başvurun.')
+              setError('')
+              setMode('forgot')
             }}>Parolamı unuttum</a>
           </div>
 
@@ -87,6 +140,7 @@ export function Login({ onDone }: { onDone: () => void }) {
             {busy ? 'Giriş yapılıyor…' : 'Giriş yap'}
           </button>
         </form>
+        )}
       </div>
 
       <footer className="signin-foot">

@@ -781,6 +781,18 @@ export const useUserAccess = (userId?: number | null) =>
     enabled: !!userId,
   })
 
+/** A link with which the person sets their own password; e-mailed when
+ *  SMTP is configured, returned either way for the administrator to copy. */
+export function useInviteUser() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: number) => api.post<{
+      link: string; emailed: boolean; detail: string | null; expires_in_days: number
+    }>(`/api/admin/users/${userId}/invite`, {}),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['audit'] }),
+  })
+}
+
 export const useAdminGroups = () =>
   useQuery({
     queryKey: ['admin-groups'],

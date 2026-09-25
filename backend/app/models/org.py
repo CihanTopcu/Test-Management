@@ -99,3 +99,24 @@ class ProjectGroup(Base):
     group_id: Mapped[int] = mapped_column(
         ForeignKey("groups.id", ondelete="CASCADE"), index=True)
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)
+
+
+class PasswordToken(Base):
+    """A single-use link for setting a password: an invitation or a reset.
+
+    Only the SHA-256 of the token is stored. The link itself goes to the
+    person (or to the administrator, when there is no mail server), so a
+    copy of this table is not a set of working links.
+    """
+    __tablename__ = "password_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    # invite | reset
+    purpose: Mapped[str] = mapped_column(String(10), nullable=False)
+    created_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

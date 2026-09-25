@@ -19,6 +19,7 @@ from ...db import get_session
 from ...models import (AuditEntry, CaseType, CustomField, CustomFieldOption,
                        Group, GroupMember, Priority, Project, ProjectGroup,
                        ProjectMember, Role, Status, SyncRun, User)
+from ...notifications import send_now
 from ...security import hash_password
 from ..deps import current_user
 from ..permissions import ADMIN, READ, _resolve, capabilities, default_for
@@ -97,6 +98,50 @@ def update_user(user_id: int, payload: UserUpdate, request: Request,
     item = UserAdminOut.model_validate(user)
     item.has_password = bool(user.password_hash)
     return item
+
+
+# --- invitations ------------------------------------------------------------
+
+@router.post("/users/{user_id}/invite")
+def invite_user(user_id: int, request: Request,
+                session: Session = Depends(get_session),
+                admin: User = Depends(require_admin)):
+    """A link with which the person sets their own password.
+
+    Until now an administrator typed a password for everybody and passed it
+    on by chat. The link is e-mailed when a mail server is configured, and
+    returned either way: with no SMTP the administrator copies it across,
+    which is still better than knowing someone's password. Works for a
+    migrated account that has no password yet and as a reset for one that
+    does; issuing a new link voids the previous one.
+    """
+    from .auth import issue_token, link_for
+
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "kullanici bulunamadi")
+    if not user.is_active:
+        raise HTTPException(400, "pasif bir hesaba davet gonderilemez")
+    purpose = "reset" if user.password_hash else "invite"
+    raw = issue_token(session, user, "invite", created_by=admin)
+    link = link_for(raw)
+    record(session, admin, "create", "invite", user.id, label=user.email,
+           request=request, detail={"kind": purpose})
+    session.commit()
+
+    sent, reason = send_now(
+        user.email, "DGTest'e davet edildiniz" if purpose == "invite"
+        else "DGTest parolanızı belirleyin",
+        "\n\n".join([
+            f"Merhaba {user.name},",
+            f"{admin.name} sizi DGTest'e (DGPays yazılım test yönetimi) ekledi."
+            if purpose == "invite" else
+            f"{admin.name} DGTest parolanızı yenilemeniz için bir bağlantı oluşturdu.",
+            "Parolanızı belirlemek için bu bağlantıyı yedi gün içinde açın:",
+            link,
+        ]))
+    return {"link": link, "emailed": sent, "detail": reason,
+            "expires_in_days": 7}
 
 
 # --- who may do what, per user ---------------------------------------------

@@ -4,19 +4,79 @@ Passwords did not come across from TestRail -- its API never exposes them --
 so imported accounts start without one and have to be given a password (or
 wired to SSO) before first use.
 """
+import hashlib
+import logging
+import secrets
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ...db import get_session
-from ...security import verify_password
-from ...models import User
+from ...notifications import send_now
+from ...security import hash_password, verify_password
+from ...models import PasswordToken, User
 from ...config import get_settings
 from ..deps import SESSION_COOKIE, create_token, current_user
 from ..schemas import UserOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+log = logging.getLogger("auth")
+
+# an invitation waits for someone back from leave; a reset should not
+LIFETIME = {"invite": timedelta(days=7), "reset": timedelta(hours=1)}
+MIN_PASSWORD = 10
+
+
+def _hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def issue_token(session: Session, user: User, purpose: str,
+                created_by: User | None = None) -> str:
+    """A fresh single-use link token; earlier unused ones for the same
+    person and purpose stop working, so only the latest link is live.
+    The caller commits."""
+    now = datetime.now(timezone.utc)
+    session.execute(
+        update(PasswordToken)
+        .where(PasswordToken.user_id == user.id,
+               PasswordToken.purpose == purpose,
+               PasswordToken.used_at.is_(None))
+        .values(expires_at=now))
+    raw = secrets.token_urlsafe(32)
+    session.add(PasswordToken(
+        user_id=user.id, token_hash=_hash(raw), purpose=purpose,
+        created_on=now, expires_at=now + LIFETIME[purpose],
+        created_by=created_by.id if created_by else None))
+    return raw
+
+
+def link_for(raw: str) -> str:
+    return f"{get_settings().public_url}/#/set-password?token={raw}"
+
+
+def _live(session: Session, raw: str) -> PasswordToken:
+    row = session.scalar(select(PasswordToken).where(PasswordToken.token_hash == _hash(raw)))
+    now = datetime.now(timezone.utc)
+    if row is None or row.used_at is not None:
+        raise HTTPException(404, "baglanti gecersiz ya da kullanilmis")
+    expires = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=timezone.utc)
+    if expires <= now:
+        raise HTTPException(404, "baglantinin suresi dolmus")
+    return row
+
+
+def _sign_in(response: Response, user: User) -> dict:
+    token = create_token(user)
+    response.set_cookie(
+        SESSION_COOKIE, token, httponly=True, samesite="lax", path="/api",
+        max_age=get_settings().access_token_ttl_minutes * 60,
+    )
+    return {"access_token": token, "token_type": "bearer"}
 
 
 @router.post("/token")
@@ -28,12 +88,9 @@ def login(response: Response,
         raise HTTPException(401, "kullanici adi veya parola hatali")
     if not verify_password(form.password, user.password_hash):
         raise HTTPException(401, "kullanici adi veya parola hatali")
-    token = create_token(user)
-    response.set_cookie(
-        SESSION_COOKIE, token, httponly=True, samesite="lax", path="/api",
-        max_age=get_settings().access_token_ttl_minutes * 60,
-    )
-    return {"access_token": token, "token_type": "bearer"}
+    user.last_login_at = datetime.now(timezone.utc)
+    session.commit()
+    return _sign_in(response, user)
 
 
 @router.post("/logout", status_code=204)
@@ -44,3 +101,71 @@ def logout(response: Response):
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(current_user)):
     return user
+
+
+class ForgotIn(BaseModel):
+    email: str
+
+
+@router.post("/forgot", status_code=202)
+def forgot_password(payload: ForgotIn, session: Session = Depends(get_session)):
+    """Send a reset link, if the address belongs to an active account.
+
+    The answer is the same either way, so this cannot be used to find out
+    who has an account. With no mail server there is nobody to send it to;
+    the sign-in page then tells people to ask an administrator.
+    """
+    user = session.scalar(select(User).where(User.email == payload.email.strip()))
+    if user is not None and user.is_active:
+        raw = issue_token(session, user, "reset")
+        session.commit()
+        sent, reason = send_now(
+            user.email, "DGTest parola sıfırlama",
+            "\n\n".join([
+                f"Merhaba {user.name},",
+                "DGTest parolanızı sıfırlamak için bu bağlantıyı bir saat içinde açın:",
+                link_for(raw),
+                "Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz; "
+                "parolanız değişmez.",
+            ]))
+        if not sent:
+            log.warning("parola sifirlama e-postasi gonderilemedi (%s): %s", user.email, reason)
+    return {"mail": bool(get_settings().smtp_host)}
+
+
+@router.get("/password-token")
+def password_token(token: str, session: Session = Depends(get_session)):
+    """What the set-password page needs to greet the person by name."""
+    row = _live(session, token)
+    user = session.get(User, row.user_id)
+    return {"purpose": row.purpose, "email": user.email, "name": user.name,
+            "min_length": MIN_PASSWORD}
+
+
+class SetPasswordIn(BaseModel):
+    token: str
+    password: str
+
+
+@router.post("/set-password")
+def set_password(payload: SetPasswordIn, response: Response,
+                 session: Session = Depends(get_session)):
+    """Use an invitation or reset link. It signs the person in, because
+    making them type the password they just chose twice is pure friction."""
+    row = _live(session, payload.token)
+    if len(payload.password) < MIN_PASSWORD:
+        raise HTTPException(400, f"parola en az {MIN_PASSWORD} karakter olmali")
+    user = session.get(User, row.user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(404, "baglanti gecersiz ya da kullanilmis")
+    now = datetime.now(timezone.utc)
+    user.password_hash = hash_password(payload.password)
+    user.last_login_at = now
+    row.used_at = now
+    # every other open link for this person dies with this one
+    session.execute(
+        update(PasswordToken)
+        .where(PasswordToken.user_id == user.id, PasswordToken.used_at.is_(None))
+        .values(expires_at=now))
+    session.commit()
+    return _sign_in(response, user)

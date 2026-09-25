@@ -36,6 +36,9 @@ ENABLED = True
 RULES: list[tuple[str, str, int, int]] = [
     # a person mistyping their password does not reach ten in a minute
     ("POST", "/api/auth/token", 10, 60),
+    # both answer an unauthenticated caller, and forgot sends mail
+    ("POST", "/api/auth/forgot", 5, 300),
+    ("POST", "/api/auth/set-password", 10, 60),
     # generous for a real CI run, tight enough to stop a runaway loop
     ("POST", "/api/results", 600, 60),
     ("POST", "/api/tests", 600, 60),
