@@ -11,6 +11,7 @@ import { RichText } from './RichText'
 import { StatusBadge } from './Status'
 import { href } from '../route'
 import { IssueRefs } from './IssueRefs'
+import { AutoRunButton } from './AutoRunButton'
 
 /**
  * The right-hand panel of a run: what the test asks for, and what happened.
@@ -155,6 +156,11 @@ export function TestPanel({ testId, catalog, projectId, runId, archived,
           </a>
         )}
       </div>
+
+      {test.case_id && (
+        <AutoRunButton caseId={test.case_id} testId={testId} projectId={projectId}
+                       runId={runId} archived={archived} />
+      )}
 
       <div className="field" style={{ marginBottom: 0 }}>
         <label>Atanan</label>

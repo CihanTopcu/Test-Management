@@ -43,6 +43,18 @@ interface Scenario {
   updated_on: string
   updated_by: string | null
   last_run: RunSummary | null
+  case_id: number | null
+  case_title: string | null
+}
+
+interface Variable {
+  id: number
+  name: string
+  is_secret: boolean
+  value: string | null
+  has_value: boolean
+  readable: boolean
+  updated_by: string | null
 }
 
 interface Config { ai: boolean; headless: boolean; commands: string[] }
@@ -163,10 +175,12 @@ function RunView({ runId, onStop }: { runId: number; onStop: () => void }) {
   )
 }
 
-function Editor({ scenario, config, projectId, onSaved, onDeleted }: {
+function Editor({ scenario, config, projectId, varsVersion, onSaved, onDeleted }: {
   scenario: Scenario | null
   config: Config | undefined
   projectId: number
+  /** bumps when the variables change, so undefined-name errors refresh */
+  varsVersion: number
   onSaved: (s: Scenario) => void
   onDeleted: () => void
 }) {
@@ -174,6 +188,8 @@ function Editor({ scenario, config, projectId, onSaved, onDeleted }: {
   const [name, setName] = useState(scenario?.name ?? '')
   const [steps, setSteps] = useState(scenario?.steps ?? STARTER)
   const [description, setDescription] = useState(scenario?.description ?? '')
+  const [caseRef, setCaseRef] = useState(scenario?.case_id ? `C${scenario.case_id}` : '')
+  const caseId = caseRef.trim() ? Number(caseRef.trim().replace(/^c/i, '')) || null : null
   const [startUrl, setStartUrl] = useState('')
   const [drafting, setDrafting] = useState(!scenario)
   const [errors, setErrors] = useState<LineError[]>([])
@@ -182,16 +198,17 @@ function Editor({ scenario, config, projectId, onSaved, onDeleted }: {
   const gutter = useRef<HTMLDivElement>(null)
 
   const dirty = !scenario || name !== scenario.name || steps !== scenario.steps
+    || caseId !== scenario.case_id
     || (description || '') !== (scenario.description || '')
 
   // the language is checked as it is typed, by the same parser the runner uses
   useEffect(() => {
     const t = setTimeout(() => {
-      api.post<{ errors: LineError[] }>('/api/autotest/check', { steps })
+      api.post<{ errors: LineError[] }>('/api/autotest/check', { steps, project_id: projectId })
         .then((r) => setErrors(r.errors)).catch(() => {})
     }, 350)
     return () => clearTimeout(t)
-  }, [steps])
+  }, [steps, projectId, varsVersion])
 
   const history = useQuery({
     queryKey: ['autotest-runs', scenario?.id],
@@ -207,8 +224,8 @@ function Editor({ scenario, config, projectId, onSaved, onDeleted }: {
 
   const save = useMutation({
     mutationFn: () => scenario
-      ? api.patch<Scenario>(`/api/autotest/scenarios/${scenario.id}`, { name, steps, description: description || null })
-      : api.post<Scenario>(`/api/projects/${projectId}/autotest/scenarios`, { name, steps, description: description || null }),
+      ? api.patch<Scenario>(`/api/autotest/scenarios/${scenario.id}`, { name, steps, description: description || null, case_id: caseId })
+      : api.post<Scenario>(`/api/projects/${projectId}/autotest/scenarios`, { name, steps, description: description || null, case_id: caseId }),
     onSuccess: (s) => { refresh(); onSaved(s) },
   })
 
@@ -341,6 +358,24 @@ function Editor({ scenario, config, projectId, onSaved, onDeleted }: {
             Hedef, ekranda görünen yazıdır: düğme metni, alan etiketi ya da alanın içindeki ipucu.
             Başka bir şey için <code>"css:#id"</code> kullanın.
           </div>
+          <div className="faint small" style={{ marginTop: 8 }}>
+            Adres, kullanıcı ya da şifre için <code>{'{{AD}}'}</code> yazın; değerini
+            yukarıdaki <b>Değişkenler</b>'den verin. Gizli değerler kayıtta görünmez.
+          </div>
+          <div className="field" style={{ margin: '14px 0 0' }}>
+            <label htmlFor="autocase">Bağlı case</label>
+            <input id="autocase" value={caseRef} onChange={(e) => setCaseRef(e.target.value)}
+                   placeholder="ör. C15477" />
+            {scenario?.case_id && scenario.case_id === caseId && (
+              <a className="small ellipsis" style={{ display: 'block', marginTop: 4 }}
+                 href={href({ page: 'cases', project: projectId, case: scenario.case_id })}>
+                {scenario.case_title ?? `C${scenario.case_id}`}
+              </a>
+            )}
+            <div className="faint small" style={{ marginTop: 4 }}>
+              Bağlıysa, koşumlarda bu case’in testinde “Otomasyonla koş” çıkar ve sonuç teste yazılır.
+            </div>
+          </div>
         </aside>
       </div>
 
@@ -374,6 +409,109 @@ function Editor({ scenario, config, projectId, onSaved, onDeleted }: {
   )
 }
 
+function VariablesDialog({ open, projectId, onClose, onChanged }: {
+  open: boolean; projectId: number; onClose: () => void; onChanged: () => void
+}) {
+  const client = useQueryClient()
+  const key = ['autotest-variables', projectId]
+  const { data: items = [] } = useQuery({
+    queryKey: key,
+    queryFn: () => api.get<Variable[]>(`/api/projects/${projectId}/autotest/variables`),
+    enabled: open,
+  })
+  const [name, setName] = useState('')
+  const [value, setValue] = useState('')
+  const [secret, setSecret] = useState(false)
+  const [editing, setEditing] = useState<number | null>(null)
+  const [draft, setDraft] = useState('')
+
+  const changed = () => { client.invalidateQueries({ queryKey: key }); onChanged() }
+  const add = useMutation({
+    mutationFn: () => api.post(`/api/projects/${projectId}/autotest/variables`,
+                               { name: name.trim(), value, is_secret: secret }),
+    onSuccess: () => { setName(''); setValue(''); setSecret(false); changed() },
+  })
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: Record<string, unknown> }) =>
+      api.patch(`/api/autotest/variables/${id}`, body),
+    onSuccess: () => { setEditing(null); setDraft(''); changed() },
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => api.del(`/api/autotest/variables/${id}`),
+    onSuccess: changed,
+  })
+  const problem = (add.error || update.error || remove.error) as Error | null
+
+  return (
+    <Dialog open={open} title="Değişkenler" onClose={onClose} width={640}>
+      <p className="small muted" style={{ marginTop: 0 }}>
+        Senaryoda <code>{'{{AD}}'}</code> olarak kullanılır. Aynı senaryoyu başka bir ortamda
+        koşmak için yalnızca değeri değiştirin. <b>Gizli</b> değerler şifreli saklanır, bir daha
+        gösterilmez ve koşum kaydında •••• olarak görünür.
+      </p>
+      {items.length > 0 && (
+        <table className="grid" style={{ marginBottom: 14 }}>
+          <tbody>
+            {items.map((v) => (
+              <tr key={v.id} style={{ cursor: 'default' }}>
+                <td style={{ width: 170 }}><code>{`{{${v.name}}}`}</code></td>
+                <td>
+                  {editing === v.id ? (
+                    <div className="row" style={{ gap: 6 }}>
+                      <input autoFocus type={v.is_secret ? 'password' : 'text'} value={draft}
+                             onChange={(e) => setDraft(e.target.value)} style={{ flex: 1 }}
+                             placeholder={v.is_secret ? 'Yeni değer' : ''}
+                             onKeyDown={(e) => { if (e.key === 'Enter') update.mutate({ id: v.id, body: { value: draft } }) }} />
+                      <button className="primary small" onClick={() => update.mutate({ id: v.id, body: { value: draft } })}>Kaydet</button>
+                      <button className="ghost small" onClick={() => setEditing(null)}>Vazgeç</button>
+                    </div>
+                  ) : v.is_secret ? (
+                    <span className="faint">
+                      {v.readable ? (v.has_value ? '•••••••• (gizli)' : 'boş (gizli)')
+                        : <span className="error">okunamıyor, yeniden girin</span>}
+                    </span>
+                  ) : (
+                    <span className="ellipsis" title={v.value ?? ''}>{v.value || <span className="faint">boş</span>}</span>
+                  )}
+                </td>
+                <td style={{ width: 150, textAlign: 'right' }}>
+                  {editing !== v.id && (
+                    <>
+                      <button className="ghost small" title="Değiştir"
+                              onClick={() => { setEditing(v.id); setDraft(v.is_secret ? '' : v.value ?? '') }}>
+                        <Icon name="edit" size={12} />
+                      </button>
+                      <button className="ghost danger small" title="Sil"
+                              onClick={() => confirm(`{{${v.name}}} silinsin mi? Kullanan senaryolar koşamaz.`) && remove.mutate(v.id)}>
+                        <Icon name="trash" size={12} />
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="eyebrow" style={{ marginBottom: 6 }}>Yeni değişken</div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <input value={name} onChange={(e) => setName(e.target.value.replace(/\s/g, '_'))}
+               placeholder="AD, ör. TEST_SIFRE" style={{ width: 170 }} aria-label="Değişken adı" />
+        <input type={secret ? 'password' : 'text'} value={value} onChange={(e) => setValue(e.target.value)}
+               placeholder="Değer" style={{ flex: 1, minWidth: 160 }} aria-label="Değer" />
+        <label className="small row" style={{ gap: 4 }}>
+          <input type="checkbox" checked={secret} onChange={(e) => setSecret(e.target.checked)} /> Gizli
+        </label>
+        <button className="primary small" disabled={!name.trim() || add.isPending}
+                onClick={() => add.mutate()}>
+          <Icon name="plus" size={12} /> Ekle
+        </button>
+      </div>
+      {problem && <div className="error small" style={{ marginTop: 8 }}>{problem.message}</div>}
+    </Dialog>
+  )
+}
+
 /**
  * Test automation without code: a scenario in plain Turkish commands, run
  * in a real browser with a screenshot per step. Scenarios can be drafted
@@ -394,6 +532,8 @@ export function Autotest({ route, projectName }: { route: Route; projectName: st
   })
   const [creating, setCreating] = useState(false)
   const [filter, setFilter] = useState('')
+  const [showVars, setShowVars] = useState(false)
+  const [varsVersion, setVarsVersion] = useState(0)
 
   const selected = scenarios.find((s) => s.id === route.scenario) ?? null
   const shown = useMemo(() => {
@@ -412,10 +552,17 @@ export function Autotest({ route, projectName }: { route: Route; projectName: st
       <div className="page-title">
         <h1>Test Otomasyonu</h1>
         <span className="faint small">{scenarios.length} senaryo</span>
-        <button className="primary right" onClick={() => { open(undefined); setCreating(true) }}>
+        <button className="ghost right" onClick={() => setShowVars(true)}>
+          <Icon name="key" size={14} /> Değişkenler
+        </button>
+        <button className="primary" onClick={() => { open(undefined); setCreating(true) }}>
           <Icon name="plus" size={14} /> Yeni senaryo
         </button>
       </div>
+
+      <VariablesDialog open={showVars} projectId={projectId}
+                       onClose={() => setShowVars(false)}
+                       onChanged={() => setVarsVersion((v) => v + 1)} />
 
       <div className="autolayout">
         <nav className="panel autolist" aria-label="Senaryolar">
@@ -445,7 +592,7 @@ export function Autotest({ route, projectName }: { route: Route; projectName: st
         <section className="panel autopane">
           {creating || selected ? (
             <Editor key={creating ? 'new' : selected!.id} scenario={creating ? null : selected}
-                    config={config} projectId={projectId}
+                    config={config} projectId={projectId} varsVersion={varsVersion}
                     onSaved={(s) => { if (creating) open(s.id) }}
                     onDeleted={() => open(undefined)} />
           ) : (

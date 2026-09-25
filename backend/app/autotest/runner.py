@@ -13,6 +13,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from urllib.parse import urljoin
 
+from . import variables
 from .dsl import Step, parse
 
 
@@ -178,9 +179,16 @@ def run_step(page, step: Step, timeout: float) -> str | None:
 
 def execute(page, steps: list[Step], timeout: float, shots_dir: str | None,
             report: Callable[[list[dict]], None],
-            should_stop: Callable[[], bool] = lambda: False) -> str:
+            should_stop: Callable[[], bool] = lambda: False,
+            values: dict[str, str] | None = None,
+            secrets: set[str] | None = None) -> str:
     """Run the steps in order, reporting the log after each one.
-    Returns passed, failed or stopped."""
+    Returns passed, failed or stopped.
+
+    {{NAME}} placeholders are filled from `values` just before a step runs;
+    the log keeps the step as written, and anything a secret value could
+    leak into (a message, a note) is masked."""
+    values, secrets = values or {}, secrets or set()
     log = [{"line": s.line, "text": s.text, "status": "pending"} for s in steps]
     report(log)
     outcome = "passed"
@@ -192,8 +200,11 @@ def execute(page, steps: list[Step], timeout: float, shots_dir: str | None,
         entry["status"] = "running"
         report(log)
         began = time.monotonic()
+        filled = Step(step.line, step.text, step.verb,
+                      [variables.fill(a, values) if isinstance(a, str) else a
+                       for a in step.args])
         try:
-            note = run_step(page, step, timeout)
+            note = run_step(page, filled, timeout)
             entry["status"] = "passed"
             if note:
                 entry["note"] = note[:300]
@@ -204,6 +215,9 @@ def execute(page, steps: list[Step], timeout: float, shots_dir: str | None,
             entry["status"] = "failed"
             entry["message"] = _plain(e)
         entry["ms"] = int((time.monotonic() - began) * 1000)
+        for key in ("message", "note"):
+            if key in entry:
+                entry[key] = variables.mask(entry[key], secrets)
         if shots_dir:
             try:
                 page.screenshot(path=os.path.join(shots_dir, f"{i}.png"))
@@ -239,7 +253,7 @@ def main(run_id: int) -> int:
 
     from ..config import get_settings
     from ..db import SessionLocal
-    from ..models import AutoRun
+    from ..models import AutoRun, AutoScenario
 
     settings = get_settings()
     now = lambda: datetime.now(timezone.utc)                # noqa: E731
@@ -251,9 +265,18 @@ def main(run_id: int) -> int:
         run.status, run.started_on = "running", now()
         session.commit()
         steps, errors = parse(run.steps)
-        if errors:
+        scenario = session.get(AutoScenario, run.scenario_id)
+        values, secrets, broken = variables.load(session, scenario.project_id)
+        missing = sorted(variables.referenced(run.steps) - set(values))
+        problems = [f"{e.line}. satır: {e.message}" for e in errors]
+        if missing:
+            problems.append("tanımsız değişken: " + ", ".join(missing))
+        if broken & variables.referenced(run.steps):
+            problems.append("gizli değer okunamadı, yeniden girin: "
+                            + ", ".join(sorted(broken)))
+        if problems:
             run.status, run.finished_on = "error", now()
-            run.message = "; ".join(f"{e.line}. satır: {e.message}" for e in errors)
+            run.message = "; ".join(problems)
             session.commit()
             return 1
 
@@ -275,7 +298,7 @@ def main(run_id: int) -> int:
                 page = browser.new_page(viewport={"width": 1366, "height": 800},
                                         locale="tr-TR")
                 outcome = execute(page, steps, settings.autotest_step_timeout_s,
-                                  shots, report, should_stop)
+                                  shots, report, should_stop, values, secrets)
                 if not settings.autotest_headless:
                     # leave the last screen up long enough to be seen
                     page.wait_for_timeout(1500)
@@ -286,8 +309,76 @@ def main(run_id: int) -> int:
             run.status = "error"
             run.message = _plain(e)
         run.finished_on = now()
+        if run.test_id and run.status in ("passed", "failed"):
+            try:
+                write_result(session, run, shots)
+            except Exception as e:                      # noqa: BLE001
+                traceback.print_exc()
+                run.message = f"sonuç teste yazılamadı: {_plain(e)}"
         session.commit()
     return 0
+
+
+STEP_STATUS = {"passed": 1, "failed": 5, "skipped": 3, "pending": 3, "running": 3}
+
+
+def write_result(session, run, shots_dir: str) -> None:
+    """Record the outcome on the test the run was started from, the way a
+    tester would have: a status, a comment saying what happened, the steps
+    one by one, and the screenshot of the step that failed (or of the last
+    one)."""
+    import hashlib
+    import secrets as _secrets
+    import shutil
+
+    from ..config import get_settings
+    from ..models import Attachment, Result, ResultStep, Run, Test
+
+    test = session.get(Test, run.test_id)
+    if test is None:
+        return
+    owner = session.get(Run, test.run_id)
+    if owner is not None and owner.is_archived:
+        run.message = "koşum arşivlendiği için sonuç teste yazılmadı"
+        return
+    log = run.log or []
+    failed = next((x for x in log if x.get("status") == "failed"), None)
+    passed = sum(1 for x in log if x.get("status") == "passed")
+    seconds = int((run.finished_on - run.started_on).total_seconds()) if run.started_on else 0
+    lines = [f"Otomasyon koşumu #{run.id}: {passed}/{len(log)} adım geçti."]
+    if failed:
+        lines.append(f"Kalan adım ({failed['line']}. satır): {failed['text']}")
+        lines.append(failed.get("message") or "")
+    result = Result(test_id=test.id, status_id=1 if run.status == "passed" else 5,
+                    created_by=run.started_by, created_on=run.finished_on,
+                    comment="\n".join(l for l in lines if l),
+                    elapsed=f"{seconds}s" if seconds else None, custom={})
+    session.add(result)
+    session.flush()
+    for i, x in enumerate(log):
+        session.add(ResultStep(result_id=result.id, idx=i, content=x.get("text"),
+                               actual=x.get("message") or x.get("note"),
+                               status_id=STEP_STATUS.get(x.get("status"), 3)))
+    shot = failed if failed else (log[-1] if log else None)
+    if shot is not None and shot.get("shot") is not None:
+        src = os.path.join(shots_dir, f"{shot['shot']}.png")
+        if os.path.isfile(src):
+            raw = open(src, "rb").read()
+            digest = hashlib.sha256(raw).hexdigest()
+            key = f"{digest[:2]}/{digest}"
+            dest = os.path.join(get_settings().storage_dir, key)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            if not os.path.exists(dest):
+                shutil.copyfile(src, dest)
+            session.add(Attachment(
+                testrail_id=f"u{_secrets.token_hex(12)}", entity_type="result",
+                entity_id=result.id, filename=f"otomasyon-{run.id}-adim-{shot['line']}.png",
+                size=len(raw), content_type="image/png", storage_key=key,
+                checksum_sha256=digest, is_inline=False,
+                project_id=owner.project_id if owner else None,
+                created_by=run.started_by, created_on=run.finished_on))
+    test.status_id = result.status_id
+    run.result_id = result.id
 
 
 if __name__ == "__main__":

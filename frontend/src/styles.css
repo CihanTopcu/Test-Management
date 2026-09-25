@@ -1622,3 +1622,9 @@ tr.detail-row:hover { background: none; }
   .steplog li { grid-template-columns: 22px minmax(0, 1fr) 72px; }
   .steplog li > .nowrap { display: none; }
 }
+.autorunbox { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); }
+.autorunbox .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.autorunstate { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.autorunstate.passed { color: var(--passed); }
+.autorunstate.failed, .autorunstate.error { color: var(--failed); }

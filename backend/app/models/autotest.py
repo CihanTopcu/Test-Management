@@ -1,7 +1,8 @@
 """Browser scenarios written on the platform and their runs."""
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (BigInteger, Boolean, DateTime, ForeignKey, Index, Integer,
+                        String, Text, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,6 +23,10 @@ class AutoScenario(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     steps: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # the test case this automates: a run started from a test of that case
+    # writes its outcome there as a result
+    case_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("cases.id", ondelete="SET NULL"), index=True)
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"))
     updated_by: Mapped[int | None] = mapped_column(
@@ -48,9 +53,35 @@ class AutoRun(Base):
     log: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     message: Mapped[str | None] = mapped_column(Text)
     stop_requested: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # started from a test in a run: the outcome goes there as a result
+    test_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("tests.id", ondelete="SET NULL"))
+    result_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("results.id", ondelete="SET NULL"))
     started_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"))
     created_on: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False)
     started_on: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_on: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AutoVariable(Base, TimestampMixin):
+    """A value a scenario refers to as {{NAME}}: an address, a test user, a
+    password. Kept per project so the same scenario runs against another
+    environment by changing one value, and so a password is not written
+    into the steps. Secret values are stored encrypted, never sent back to
+    the page and masked in a run's log.
+    """
+    __tablename__ = "auto_variables"
+    __table_args__ = (UniqueConstraint("project_id", "name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    # plain for ordinary values, Fernet token for secrets
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    is_secret: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    updated_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"))
