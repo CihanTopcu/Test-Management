@@ -317,7 +317,7 @@ export function ProjectAdmin() {
         <table>
           <thead>
             <tr>
-              <th style={{ width: 60 }}>ID</th>
+              <th style={{ width: 118 }}>ID</th>
               <th>Ad</th>
               <th style={{ width: 130 }}>Suite yapısı</th>
               <th style={{ width: 150 }}>Varsayılan erişim</th>

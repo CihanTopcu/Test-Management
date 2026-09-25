@@ -51,7 +51,7 @@ export function Todo() {
                               page: 'runs', project: Number(projectId),
                               run: Number(runId), test: r.test_id })
                           }}>
-                        <td className="cid" style={{ width: 96 }}>T{r.test_id}</td>
+                        <td className="cid" style={{ width: 108 }}>T{r.test_id}</td>
                         <td className="title">{r.test_title}</td>
                         <td style={{ width: 120 }}>
                           <StatusBadge catalog={catalog} id={r.status_id} />

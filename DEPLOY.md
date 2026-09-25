@@ -120,6 +120,26 @@ docker compose up -d --build
 
 Şema değişiklikleri açılışta uygulanır. **Güncellemeden önce yedek alın.**
 
+### Kimlik aralığı (bir kez)
+
+Uygulamada oluşturulan her kayıt (case, koşum, sonuç, kullanıcı…)
+1.000.000.000'dan başlayan kimlik alır; TestRail'den gelenler kendi
+kimliklerini korur. Eşitleme kimliğe göre yazdığı için iki aralığın
+ayrı olması şart: aksi halde TestRail'in bir sonraki kaydı, burada
+oluşturulmuş bir kaydın üzerine yazılır. Açılış sayaçları kendiliğinden
+bu aralığa taşır.
+
+Bu değişiklikten **önce** uygulamada kayıt oluşturulmuş bir kurulumda, o
+kayıtlar bir kez yeni aralığa taşınmalıdır:
+
+```bash
+docker compose exec sync python migration/renumber_native.py          # ne taşınacak
+docker compose exec sync python migration/renumber_native.py --apply  # taşı
+```
+
+Tek işlemde çalışır; bağlı adım sonuçları ve ekler birlikte güncellenir.
+Taşınacak bir şey kalmadığında hiçbir şey yapmaz.
+
 ---
 
 ## 5. E-posta bildirimleri

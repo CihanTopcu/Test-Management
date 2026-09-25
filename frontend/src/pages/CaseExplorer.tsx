@@ -160,7 +160,7 @@ export function CaseExplorer({ route, projectName }: {
         <table className="explorer-table">
           <thead>
             <tr>
-              <th style={{ width: 92 }}>ID</th>
+              <th style={{ width: 108 }}>ID</th>
               <th>Başlık</th>
               <th style={{ width: 200 }}>Suite</th>
               <th style={{ width: 110 }}>Tip</th>

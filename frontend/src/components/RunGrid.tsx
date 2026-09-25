@@ -129,7 +129,7 @@ export function RunGrid({
                      onChange={(e) => onPick(
                        e.target.checked ? new Set(tests.map((t) => t.id)) : new Set())} />
             </th>
-            <th style={{ width: 96 }}>ID</th>
+            <th style={{ width: 108 }}>ID</th>
             <th>Test</th>
             <th style={{ width: 108 }}>Durum</th>
             <th style={{ width: 176 }} />

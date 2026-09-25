@@ -304,7 +304,7 @@ export function MilestoneView({ route, projectName }: {
           <table>
             <thead>
               <tr>
-                <th style={{ width: 90 }}>ID</th>
+                <th style={{ width: 108 }}>ID</th>
                 <th>Koşum</th>
                 <th style={{ width: 150 }}>Atanan</th>
                 <th style={{ width: 170 }}>İlerleme</th>

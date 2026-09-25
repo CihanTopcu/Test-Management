@@ -133,6 +133,33 @@ LATE_COLUMNS = [
 ]
 
 
+# Rows created in this application take ids from here up. Imported rows keep
+# their TestRail ids, which are far below it (the largest, a test, is under
+# ten million), so the two can never meet. Without the gap every sequence
+# sat just past the highest imported id -- exactly where TestRail's next
+# case, run or result would land -- and the cut-over sync, which writes by
+# id, would have overwritten whatever this application had created there.
+NATIVE_ID_BASE = 1_000_000_000
+
+
+def ensure_native_id_range() -> None:
+    """Every identity sequence at or past NATIVE_ID_BASE. Idempotent."""
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
+        for table in Base.metadata.sorted_tables:
+            pk = list(table.primary_key.columns)
+            if len(pk) != 1 or not pk[0].autoincrement:
+                continue
+            col = pk[0].name
+            seq = c.execute(text(
+                f"SELECT pg_get_serial_sequence('{table.name}', '{col}')")).scalar()
+            if not seq:
+                continue
+            c.execute(text(
+                f"SELECT setval('{seq}', GREATEST("
+                f"(SELECT COALESCE(MAX({col}), 0) FROM {table.name}), "
+                f"{NATIVE_ID_BASE}, (SELECT last_value FROM {seq})))"))
+
+
 def ensure_late_columns() -> None:
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
         for table, column, spec in LATE_COLUMNS:
@@ -156,6 +183,7 @@ def run() -> None:
     settings = get_settings()
     Base.metadata.create_all(engine)
     ensure_late_columns()
+    ensure_native_id_range()
     ensure_search_indexes()
 
     with Session(engine) as session:

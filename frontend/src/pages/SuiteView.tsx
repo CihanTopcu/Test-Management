@@ -467,7 +467,7 @@ export function SuiteView({ route, projectName }: { route: Route; projectName: s
                        onChange={(e) => setPicked(
                          e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())} />
               </span>
-              <span style={{ width: 86 }}>ID</span>
+              <span style={{ width: 108 }}>ID</span>
               <span style={{ flex: 1 }}>Başlık</span>
               <span style={{ width: 100 }}>Tip</span>
               <span style={{ width: 100 }}>Öncelik</span>
@@ -504,7 +504,7 @@ export function SuiteView({ route, projectName }: { route: Route; projectName: s
                             <input type="checkbox" checked={picked.has(row.id)}
                                    onChange={() => togglePick(row.id)} />
                           </td>
-                          <td className="cid" style={{ width: 86 }}
+                          <td className="cid" style={{ width: 108 }}
                               onClick={() => openCase(row.id)}>C{row.id}</td>
                           <td className="title" onClick={() => openCase(row.id)}>{row.title}</td>
                           <td className="small muted" style={{ width: 100 }}

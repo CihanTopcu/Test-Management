@@ -781,7 +781,14 @@ def load_history(session, only_cases: set[int] | None = None):
 # --- finishing up ----------------------------------------------------------
 
 def fix_sequences(session):
-    """Move every identity sequence past the highest imported id."""
+    """Keep every identity sequence in this application's own id range.
+
+    It used to set them just past the highest imported id, which is the id
+    TestRail hands out next: a case created here and the next one created in
+    TestRail got the same number, and the next sync overwrote ours.
+    """
+    from app.bootstrap import NATIVE_ID_BASE
+
     log("== sequence duzeltme ==")
     for table in Base.metadata.tables.values():
         pk = list(table.primary_key.columns)
@@ -790,7 +797,8 @@ def fix_sequences(session):
         col = pk[0].name
         session.execute(text(
             f"SELECT setval(pg_get_serial_sequence('{table.name}', '{col}'), "
-            f"GREATEST((SELECT COALESCE(MAX({col}), 0) FROM {table.name}), 1))"
+            f"GREATEST((SELECT COALESCE(MAX({col}), 0) FROM {table.name}), "
+            f"{NATIVE_ID_BASE}))"
         ))
     session.commit()
     log("  ok")
