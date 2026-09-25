@@ -604,3 +604,25 @@ export interface JiraIssue {
   type: string | null
   missing: boolean
 }
+
+export interface SyncChanges {
+  window: { from: string; to: string } | null
+  note?: string
+  testers: { name: string; results: number; passed: number; failed: number; other: number }[]
+  results_total: number
+  results: {
+    id: number; created_on: string; tester: string; status_id: number | null
+    status: string | null; comment: string | null; defects: string | null
+    test_id: number; test_title: string; run_id: number; run_name: string
+    project_id: number; project: string | null
+  }[]
+  runs: {
+    id: number; name: string; project_id: number; project: string | null
+    created_on: string | null; created_by: string | null; is_completed: boolean
+    new: boolean; results: number
+  }[]
+  cases: {
+    id: number; title: string; project_id: number; project: string | null
+    updated_on: string | null; updated_by: string | null; new: boolean
+  }[]
+}

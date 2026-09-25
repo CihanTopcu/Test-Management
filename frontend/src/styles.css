@@ -1532,3 +1532,9 @@ a.button-link.sso:hover { background: #e8f0ff; border-color: #e8f0ff; }
 .signin-card .or::before, .signin-card .or::after {
   content: ''; flex: 1; height: 1px; background: var(--border);
 }
+
+/* a sync pass opened under its row in the history */
+tr.detail-row > td { background: var(--surface-2); padding: 14px 16px 18px; }
+tr.detail-row:hover { background: none; }
+.syncchanges { display: flex; flex-direction: column; gap: 12px; }
+.syncchanges .panel { background: var(--surface); }

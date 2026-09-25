@@ -579,6 +579,118 @@ def sync_status(session: Session = Depends(get_session),
     }
 
 
+RESULT_LIMIT = 300
+
+
+def _first_line(text: str | None, width: int = 140) -> str | None:
+    """A result comment's first line worth reading, without TestRail's
+    markdown. Headings are skipped: these comments open with a banner like
+    **_____ Faz İzleme Adımları _____**, which is the same on every result
+    and says nothing about this one."""
+    for line in (text or "").splitlines():
+        raw = line.strip()
+        if raw.startswith("#") or raw.startswith("**__") or raw.startswith("__"):
+            continue
+        clean = raw.replace("*", "").replace("_", " ").strip(" -")
+        clean = " ".join(clean.split())
+        if clean:
+            return clean[:width]
+    return None
+
+
+@router.get("/sync/{run_id}/changes")
+def sync_changes(run_id: int, session: Session = Depends(get_session),
+                 _: User = Depends(require_admin)):
+    """What one sync pass brought in: which results, by whom, in which runs,
+    and which cases changed.
+
+    "6 koşum · 5 sonuç" said how much, never what. It is worked out from the
+    pass's own window -- the TestRail rows (testrail_id set) created or
+    changed between its window start and its finish -- which matches the
+    counts the pass recorded, and works for passes run before this existed.
+    Windows overlap by half an hour on purpose, so a result entered at the
+    seam can appear under two consecutive passes.
+    """
+    sync = session.get(SyncRun, run_id)
+    if sync is None:
+        raise HTTPException(404, "esitleme bulunamadi")
+    if sync.window_from is None or sync.status not in ("ok", "failed"):
+        return {"window": None, "testers": [], "results": [], "runs": [], "cases": [],
+                "note": "Bu geçiş henüz tamamlanmadı."}
+    start = sync.window_from
+    end = sync.finished_on or datetime.now(timezone.utc)
+
+    from ...models import Case, Result, Run, Status, Suite, Test
+
+    users = {u.id: u.name for u in session.scalars(select(User))}
+    projects = dict(session.execute(select(Project.id, Project.name)).all())
+    labels = dict(session.execute(select(Status.id, Status.label)).all())
+
+    in_window = [Result.testrail_id.is_not(None), Result.created_on >= start,
+                 Result.created_on <= end]
+    total = session.scalar(select(func.count()).select_from(Result).where(*in_window)) or 0
+    rows = session.execute(
+        select(Result.id, Result.created_on, Result.created_by, Result.status_id,
+               Result.comment, Result.defects, Test.id, Test.title,
+               Run.id, Run.name, Run.project_id)
+        .join(Test, Result.test_id == Test.id)
+        .join(Run, Test.run_id == Run.id)
+        .where(*in_window)
+        .order_by(Result.created_on.desc())
+        .limit(RESULT_LIMIT)).all()
+    results = [{
+        "id": rid, "created_on": when, "tester": users.get(by, f"#{by}" if by else "—"),
+        "status_id": sid, "status": labels.get(sid), "comment": _first_line(comment),
+        "defects": defects, "test_id": tid, "test_title": title,
+        "run_id": run, "run_name": run_name,
+        "project_id": pid, "project": projects.get(pid),
+    } for rid, when, by, sid, comment, defects, tid, title, run, run_name, pid in rows]
+
+    # who entered what, over the whole window (not just the listed page)
+    testers: dict[str, dict] = {}
+    for by, sid, n in session.execute(
+            select(Result.created_by, Result.status_id, func.count())
+            .where(*in_window).group_by(Result.created_by, Result.status_id)):
+        t = testers.setdefault(users.get(by, "—"), {"results": 0, "passed": 0, "failed": 0, "other": 0})
+        t["results"] += n
+        t["passed" if sid == 1 else "failed" if sid == 5 else "other"] += n
+
+    # runs: those the results landed in, and those TestRail opened in the window
+    per_run = dict(session.execute(
+        select(Test.run_id, func.count()).join(Result, Result.test_id == Test.id)
+        .where(*in_window).group_by(Test.run_id)).all())
+    opened = set(session.scalars(select(Run.id).where(
+        Run.testrail_id.is_not(None), Run.created_on >= start, Run.created_on <= end)))
+    runs = [{
+        "id": r.id, "name": r.name, "project_id": r.project_id,
+        "project": projects.get(r.project_id), "created_on": r.created_on,
+        "created_by": users.get(r.created_by) if r.created_by else None,
+        "is_completed": r.is_completed, "new": r.id in opened,
+        "results": per_run.get(r.id, 0),
+    } for r in session.scalars(
+        select(Run).where(Run.id.in_(list(set(per_run) | opened) or [-1]))
+        .order_by(Run.created_on.desc()))]
+
+    cases = [{
+        "id": c.id, "title": c.title, "project_id": pid, "project": projects.get(pid),
+        "updated_on": c.updated_on,
+        "updated_by": users.get(c.updated_by or c.created_by),
+        "new": bool(c.created_on and c.created_on >= start),
+    } for c, pid in session.execute(
+        select(Case, Suite.project_id).join(Suite, Case.suite_id == Suite.id)
+        .where(Case.testrail_id.is_not(None), Case.updated_on >= start,
+               Case.updated_on <= end)
+        .order_by(Case.updated_on.desc()).limit(RESULT_LIMIT))]
+
+    return {
+        "window": {"from": start, "to": end},
+        "testers": sorted(({"name": k, **v} for k, v in testers.items()),
+                          key=lambda t: -t["results"]),
+        "results_total": total, "results": results,
+        "runs": runs, "cases": cases,
+    }
+
+
 @router.post("/sync", status_code=status.HTTP_202_ACCEPTED)
 def request_sync(request: Request, session: Session = Depends(get_session),
                  admin: User = Depends(require_admin)):

@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
-  ActivityByUserOut, ActivityItem, AdminSummary, Attachment, AuditPage, AutomationBacklog, CaseExplorerPage, CasePage, Catalog, Coverage, CustomField, DashboardOut, DefectReport, DigestPreview, Distribution, DuplicateGroup, FlakyCase, GroupAdmin, HistoryEntry, JiraIssue, Milestone, MilestoneProgress, NeverRunCase, NotificationPreference, PassTrendWeek, Project, ProjectGroupAccess, ProjectMember, ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode, SeriesPoint, SubscriptionList, Suite, SyncStatusOut, Test, TestCase, TestDetail, TestPage, TodayOut, TodoItem, User, UserAccess, UserAdmin,
+  ActivityByUserOut, ActivityItem, AdminSummary, Attachment, AuditPage, AutomationBacklog, CaseExplorerPage, CasePage, Catalog, Coverage, CustomField, DashboardOut, DefectReport, DigestPreview, Distribution, DuplicateGroup, FlakyCase, GroupAdmin, HistoryEntry, JiraIssue, Milestone, MilestoneProgress, NeverRunCase, NotificationPreference, PassTrendWeek, Project, ProjectGroupAccess, ProjectMember, ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode, SeriesPoint, SubscriptionList, Suite, SyncChanges, SyncStatusOut, Test, TestCase, TestDetail, TestPage, TodayOut, TodoItem, User, UserAccess, UserAdmin,
 } from './types'
 
 /** Lookup tables change about twice a year; keep them for the session. */
@@ -278,6 +278,15 @@ export const useSyncStatus = () =>
     refetchInterval: (query) =>
       query.state.data?.runs.some((r) => r.status === 'queued' || r.status === 'running')
         ? 5_000 : 60_000,
+  })
+
+/** What one sync pass brought in; fetched when its row is opened. */
+export const useSyncChanges = (syncId: number | null) =>
+  useQuery({
+    queryKey: ['sync-changes', syncId],
+    queryFn: () => api.get<SyncChanges>(`/api/admin/sync/${syncId}/changes`),
+    enabled: syncId != null,
+    staleTime: 5 * 60 * 1000,
   })
 
 /** Ask the sync service for a pass now; it picks the request up within

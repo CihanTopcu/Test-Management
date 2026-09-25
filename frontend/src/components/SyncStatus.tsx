@@ -1,6 +1,8 @@
+import { Fragment, useState } from 'react'
 import { ApiError } from '../api/client'
 import { useCancelSync, useRequestSync, useSyncStatus } from '../api/hooks'
 import { Icon } from './Icon'
+import { SyncChanges } from './SyncChanges'
 
 /**
  * What the TestRail sync has been doing.
@@ -51,6 +53,8 @@ export function SyncStatus() {
   const { data, isLoading } = useSyncStatus()
   const request = useRequestSync()
   const cancel = useCancelSync()
+  // the pass whose changes are open under its row
+  const [open, setOpen] = useState<number | null>(null)
 
   if (isLoading || !data) {
     return <div className="skeleton" style={{ width: 260 }} />
@@ -168,12 +172,13 @@ export function SyncStatus() {
                 <th style={{ width: 80 }}>Süre</th>
                 <th style={{ width: 150 }}>Pencere başı</th>
                 <th>Alınanlar</th>
-                <th style={{ width: 90 }} />
+                <th style={{ width: 120 }} />
               </tr>
             </thead>
             <tbody>
               {data.runs.map((r) => (
-                <tr key={r.id} style={{ cursor: 'default' }}>
+                <Fragment key={r.id}>
+                <tr className={open === r.id ? 'selected' : ''} style={{ cursor: 'default' }}>
                   <td className="small muted nowrap">{fmt(r.started_on)}</td>
                   <td>
                     <span className="badge" style={{
@@ -201,8 +206,21 @@ export function SyncStatus() {
                         İptal
                       </button>
                     )}
+                    {(r.status === 'ok' || r.status === 'failed') && (
+                      <button className="ghost small" aria-expanded={open === r.id}
+                              onClick={() => setOpen(open === r.id ? null : r.id)}>
+                        {open === r.id ? 'Kapat' : 'Ayrıntılar'}
+                        <Icon name={open === r.id ? 'chevron-up' : 'chevron-down'} size={12} />
+                      </button>
+                    )}
                   </td>
                 </tr>
+                {open === r.id && (
+                  <tr className="detail-row" style={{ cursor: 'default' }}>
+                    <td colSpan={6}><SyncChanges syncId={r.id} /></td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
