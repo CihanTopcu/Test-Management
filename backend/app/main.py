@@ -26,6 +26,8 @@ async def lifespan(_: FastAPI):
     # and an administrator so the first page load is a login screen and not a
     # stack trace
     bootstrap.run()
+    from .autotest import schedule
+    schedule.start()
     yield
 
 

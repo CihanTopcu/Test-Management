@@ -23,6 +23,7 @@ KINDS = {
     "milestone_due": "Milestone tarihi yaklaşıyor",
     "case_changed": "İzlediğiniz case değişti",
     "result_failed": "Atandığınız test başarısız oldu",
+    "automation": "Otomasyon planı sonucu",
 }
 
 

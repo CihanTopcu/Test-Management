@@ -1636,3 +1636,23 @@ tr.detail-row:hover { background: none; }
 .datasetbox { margin-top: 14px; }
 .datasetbox summary { cursor: pointer; margin-bottom: 6px; }
 .datasetbox textarea { width: 100%; font-family: var(--mono); font-size: 12.5px; resize: vertical; }
+
+.page-title .tabs { display: inline-flex; gap: 2px; padding: 3px; margin-left: 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface); }
+.page-title .tabs button { border: 0; background: none; color: var(--text-dim); padding: 4px 12px;
+  border-radius: var(--radius-pill); font: inherit; font-size: 13px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px; }
+.page-title .tabs button.on { background: var(--accent-soft); color: var(--text); }
+.plangrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; }
+.notifylist, .scenariopick { display: flex; flex-direction: column; gap: 4px; max-height: 240px;
+  overflow: auto; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.scenariopick { max-height: 360px; }
+.scenariopick label, .notifylist label { min-width: 0; }
+.batchlist, .batchruns { list-style: none; margin: 0; padding: 0; }
+.batchrow { border-top: 1px solid var(--border); }
+.batchrow-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 4px;
+  border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.batchrow-head:hover { background: var(--surface-2); }
+.batchrow-body { padding: 4px 8px 12px 28px; }
+.batchruns li { display: flex; align-items: center; gap: 10px; padding: 3px 0; min-width: 0; }
+@media (max-width: 900px) { .plangrid { grid-template-columns: 1fr; } }

@@ -60,6 +60,9 @@ class AutoRun(Base):
         BigInteger, ForeignKey("tests.id", ondelete="SET NULL"))
     result_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("results.id", ondelete="SET NULL"))
+    # part of a plan's (or a run screen's) batch
+    batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("auto_batches.id", ondelete="SET NULL"), index=True)
     started_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"))
     created_on: Mapped[datetime] = mapped_column(
@@ -87,3 +90,58 @@ class AutoVariable(Base, TimestampMixin):
     is_secret: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     updated_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class AutoPlan(Base, TimestampMixin):
+    """Scenarios that run by themselves on a schedule.
+
+    The schedule is weekdays and times of day in the configured time zone:
+    "weekdays at 07:30 and 13:00" is what people ask for, and it reads back
+    the same way. next_run_at is kept so the scheduler only has to compare
+    one column, and so the page can say when the next run is.
+    """
+    __tablename__ = "auto_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    scenario_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # 0 = Monday … 6 = Sunday
+    days: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # "HH:MM"
+    times: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # record the outcome in a new test run of the linked cases
+    record_run: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    notify_user_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # also tell them when everything passed, not only on a failure
+    notify_always: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"))
+    updated_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class AutoBatch(Base):
+    """One firing of a plan, or a run screen's "run the automation": the
+    scenarios it queued, and what they came to."""
+    __tablename__ = "auto_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("auto_plans.id", ondelete="SET NULL"), index=True)
+    # schedule | manual
+    trigger: Mapped[str] = mapped_column(String(10), nullable=False, default="manual")
+    # the test runs made to hold the results, when the plan asks for one
+    run_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    started_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"))
+    created_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_on: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # passed / failed / error / stopped counts once finished
+    summary: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)

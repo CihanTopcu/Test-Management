@@ -398,6 +398,24 @@ def _plain(e: Exception) -> str:
 # --- the process the API starts ------------------------------------------------
 
 def main(run_id: int) -> int:
+    """Run one queued run; the last run of a batch closes the batch, however
+    it ended (passed, failed, stopped or never started)."""
+    try:
+        return _main(run_id)
+    finally:
+        from ..db import SessionLocal
+        from ..models import AutoRun
+        from .schedule import finish_batch
+        try:
+            with SessionLocal() as session:
+                run = session.get(AutoRun, run_id)
+                if run is not None and run.batch_id:
+                    finish_batch(session, run.batch_id)
+        except Exception:                               # noqa: BLE001
+            traceback.print_exc()
+
+
+def _main(run_id: int) -> int:
     from playwright.sync_api import sync_playwright
     from sqlalchemy import select
 

@@ -137,6 +137,7 @@ LATE_COLUMNS = [
     ("auto_scenarios", "data", "text"),
     ("auto_scenarios", "case_id", "bigint REFERENCES cases(id) ON DELETE SET NULL"),
     ("auto_runs", "test_id", "bigint REFERENCES tests(id) ON DELETE SET NULL"),
+    ("auto_runs", "batch_id", "integer REFERENCES auto_batches(id) ON DELETE SET NULL"),
     ("auto_runs", "result_id", "bigint REFERENCES results(id) ON DELETE SET NULL"),
 ]
 

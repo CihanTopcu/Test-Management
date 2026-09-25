@@ -86,6 +86,8 @@ def app_client(database_url):
     os.environ["SECRET_KEY"] = secrets.token_hex(16)
     # the suite drives the same endpoints far harder than a person would
     os.environ["RATE_LIMIT_ENABLED"] = "false"
+    # plans are fired by calling tick() in the tests, not by a clock
+    os.environ["AUTOTEST_SCHEDULER_ENABLED"] = "false"
 
     from app.config import get_settings
     get_settings.cache_clear()

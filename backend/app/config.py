@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # a pause after each browser action, so a watching person can follow
     autotest_slow_mo_ms: int = 250
     autotest_step_timeout_s: float = 10
+    # plans fire on this clock; off where another process does the firing
+    autotest_scheduler_enabled: bool = True
+    autotest_timezone: str = "Europe/Istanbul"
     # drafting commands from free text; off without a key
     anthropic_api_key: str = ""
     autotest_ai_model: str = "claude-opus-5-5"

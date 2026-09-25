@@ -337,3 +337,87 @@ Yaz "E-posta" = "{{rastgele.tckn}}"
     assert failed["text"] == 'Değer "E-posta" = "{{BEKLENEN}}"'
     assert "yanlis@dgpays.com" in failed["message"]
     assert second[-1]["status"] == "skipped"
+
+
+def test_next_fire_follows_days_and_times_in_local_time(app_client):
+    from datetime import datetime, timezone
+    from app.autotest.schedule import next_fire
+    # Friday 25.09.2026 14:00 in Istanbul (UTC+3) is 11:00 UTC
+    friday = datetime(2026, 9, 25, 11, 0, tzinfo=timezone.utc)
+    weekdays = [0, 1, 2, 3, 4]
+    # the 13:00 slot has passed; next is Monday 07:30 local = 04:30 UTC
+    assert next_fire(weekdays, ["13:00", "07:30"], friday) == datetime(
+        2026, 9, 28, 4, 30, tzinfo=timezone.utc)
+    assert next_fire(weekdays, ["18:00"], friday) == datetime(
+        2026, 9, 25, 15, 0, tzinfo=timezone.utc)
+    assert next_fire([], ["09:00"], friday) is None
+    assert next_fire([5], ["xx"], friday) is None
+
+
+def test_a_plan_fires_on_schedule_and_records_a_run(app_client, admin, project, suite,
+                                                     make_case, browser, db):
+    from datetime import datetime, timedelta, timezone
+    from app.autotest import schedule
+    from app.models import AutoPlan, Notification
+
+    good, bad = make_case("Planlı geçen"), make_case("Planlı kalan")
+    base = f"/api/projects/{project['id']}/autotest/scenarios"
+    s1 = app_client.post(base, headers=admin, json={
+        "name": "P geçen", "case_id": good["id"],
+        "steps": f'Git {browser}' + chr(10) + 'Gör "Giriş Yap"'}).json()
+    s2 = app_client.post(base, headers=admin, json={
+        "name": "P kalan", "case_id": bad["id"],
+        "steps": f'Git {browser}' + chr(10) + 'Gör "Olmayan"'}).json()
+    me = next(u["id"] for u in app_client.get("/api/users", headers=admin).json()
+              if u["email"] == "admin@test.local")
+
+    plans = f"/api/projects/{project['id']}/autotest/plans"
+    assert app_client.post(plans, headers=admin, json={
+        "name": "x", "times": ["25:00"]}).status_code == 400
+    plan = app_client.post(plans, headers=admin, json={
+        "name": "Gece regresyonu", "scenario_ids": [s1["id"], s2["id"]],
+        "days": [0, 1, 2, 3, 4, 5, 6], "times": ["3:05"], "record_run": True,
+        "notify_user_ids": [me]}).json()
+    assert plan["times"] == ["03:05"] and plan["next_run_at"]
+
+    # make it due, then let the clock tick
+    row = db.get(AutoPlan, plan["id"])
+    row.next_run_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    db.commit()
+    fired = schedule.tick(db)
+    assert len(fired) == 1
+    assert schedule.tick(db) == []                       # not twice
+
+    batch = app_client.get(f"/api/autotest/batches/{fired[0]}", headers=admin).json()
+    assert batch["trigger"] == "schedule" and batch["finished_on"]
+    assert batch["counts"]["passed"] == 1 and batch["counts"]["failed"] == 1
+    assert len(batch["run_ids"]) == 1
+
+    tests = app_client.get(f"/api/runs/{batch['run_ids'][0]}/tests", headers=admin).json()["items"]
+    assert {t["case_id"]: t["status_id"] for t in tests} == {good["id"]: 1, bad["id"]: 5}
+
+    db.expire_all()
+    note = db.query(Notification).filter(Notification.user_id == me,
+                                         Notification.kind == "automation").all()
+    assert any("Gece regresyonu" in n.subject and "1 senaryo kaldı" in n.subject for n in note)
+    listed = app_client.get(plans, headers=admin).json()
+    mine = next(p for p in listed if p["id"] == plan["id"])
+    assert mine["last_batch"]["id"] == fired[0]
+    assert datetime.fromisoformat(mine["next_run_at"]) > datetime.now(timezone.utc)
+
+
+def test_a_plan_can_be_run_by_hand_and_paused(app_client, admin, project, browser):
+    base = f"/api/projects/{project['id']}/autotest/scenarios"
+    s = app_client.post(base, headers=admin, json={
+        "name": "Elle", "steps": f'Git {browser}' + chr(10) + 'Gör "Giriş Yap"'}).json()
+    plans = f"/api/projects/{project['id']}/autotest/plans"
+    plan = app_client.post(plans, headers=admin, json={
+        "name": "Elle koşulan", "scenario_ids": [s["id"]], "times": ["09:00"]}).json()
+    batch = app_client.post(f"/api/autotest/plans/{plan['id']}/fire", headers=admin).json()
+    assert batch["trigger"] == "manual" and batch["counts"]["passed"] == 1
+
+    paused = app_client.patch(f"/api/autotest/plans/{plan['id']}", headers=admin,
+                              json={"is_active": False}).json()
+    assert paused["next_run_at"] is None
+    history = app_client.get(f"/api/autotest/plans/{plan['id']}/batches", headers=admin).json()
+    assert [b["id"] for b in history] == [batch["id"]]

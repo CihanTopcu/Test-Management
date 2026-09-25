@@ -5,8 +5,9 @@ import { Crumbs } from '../components/Crumbs'
 import { Dialog } from '../components/Dialog'
 import { Icon } from '../components/Icon'
 import { href, type Route } from '../route'
+import { AutotestPlans } from './AutotestPlans'
 
-interface RunSummary {
+export interface RunSummary {
   id: number
   scenario_id: number
   status: 'queued' | 'running' | 'passed' | 'failed' | 'error' | 'stopped'
@@ -80,7 +81,7 @@ const time = (value: string | null) => value
   ? new Date(value).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
   : '—'
 
-function RunPill({ run }: { run: Pick<RunSummary, 'status' | 'passed' | 'total'> }) {
+export function RunPill({ run }: { run: Pick<RunSummary, 'status' | 'passed' | 'total'> }) {
   return (
     <span className={`runpill ${run.status}`}>
       {LIVE.has(run.status) && <span className="pulse" />}
@@ -187,8 +188,10 @@ function RunView({ runId, onStop }: { runId: number; onStop: () => void }) {
   )
 }
 
-function Editor({ scenario, config, projectId, varsVersion, onSaved, onDeleted }: {
+function Editor({ scenario, config, projectId, varsVersion, initialRun, onSaved, onDeleted }: {
   scenario: Scenario | null
+  /** a run to show instead of the latest, when linked from a plan's history */
+  initialRun?: number
   config: Config | undefined
   projectId: number
   /** bumps when the variables change, so undefined-name errors refresh */
@@ -207,7 +210,7 @@ function Editor({ scenario, config, projectId, varsVersion, onSaved, onDeleted }
   const [errors, setErrors] = useState<LineError[]>([])
   const [data, setData] = useState(scenario?.data ?? '')
   const [dataInfo, setDataInfo] = useState<{ rows: number; error: string | null }>({ rows: 0, error: null })
-  const [runId, setRunId] = useState<number | null>(scenario?.last_run?.id ?? null)
+  const [runId, setRunId] = useState<number | null>(initialRun ?? scenario?.last_run?.id ?? null)
   const area = useRef<HTMLTextAreaElement>(null)
   const gutter = useRef<HTMLDivElement>(null)
 
@@ -589,6 +592,8 @@ export function Autotest({ route, projectName }: { route: Route; projectName: st
   const [showVars, setShowVars] = useState(false)
   const [varsVersion, setVarsVersion] = useState(0)
 
+  const tab = route.filters?.tab === 'plans' ? 'plans' : 'scenarios'
+  const planId = route.filters?.plan ? Number(route.filters.plan) : undefined
   const selected = scenarios.find((s) => s.id === route.scenario) ?? null
   const shown = useMemo(() => {
     const q = filter.trim().toLocaleLowerCase('tr')
@@ -599,25 +604,49 @@ export function Autotest({ route, projectName }: { route: Route; projectName: st
     setCreating(false)
     location.hash = href({ page: 'autotest', project: projectId, scenario: id })
   }
+  const openPlan = (id: number | undefined) => {
+    setCreating(false)
+    location.hash = href({ page: 'autotest', project: projectId,
+                           filters: id ? { tab: 'plans', plan: String(id) } : { tab: 'plans' } })
+  }
 
   return (
     <main className="main">
       <Crumbs projectId={projectId} projectName={projectName} />
       <div className="page-title">
         <h1>Test Otomasyonu</h1>
-        <span className="faint small">{scenarios.length} senaryo</span>
+        <div className="tabs" role="tablist">
+          <button role="tab" aria-selected={tab === 'scenarios'} className={tab === 'scenarios' ? 'on' : ''}
+                  onClick={() => open(undefined)}>
+            Senaryolar <span className="faint">{scenarios.length}</span>
+          </button>
+          <button role="tab" aria-selected={tab === 'plans'} className={tab === 'plans' ? 'on' : ''}
+                  onClick={() => openPlan(undefined)}>
+            <Icon name="clock" size={13} /> Planlar
+          </button>
+        </div>
         <button className="ghost right" onClick={() => setShowVars(true)}>
           <Icon name="key" size={14} /> Değişkenler
         </button>
-        <button className="primary" onClick={() => { open(undefined); setCreating(true) }}>
-          <Icon name="plus" size={14} /> Yeni senaryo
-        </button>
+        {tab === 'scenarios' ? (
+          <button className="primary" onClick={() => { open(undefined); setCreating(true) }}>
+            <Icon name="plus" size={14} /> Yeni senaryo
+          </button>
+        ) : (
+          <button className="primary" onClick={() => { openPlan(undefined); setCreating(true) }}>
+            <Icon name="plus" size={14} /> Yeni plan
+          </button>
+        )}
       </div>
 
       <VariablesDialog open={showVars} projectId={projectId}
                        onClose={() => setShowVars(false)}
                        onChanged={() => setVarsVersion((v) => v + 1)} />
 
+      {tab === 'plans' ? (
+        <AutotestPlans projectId={projectId} selected={planId} onSelect={openPlan}
+                       creating={creating} scenarios={scenarios} />
+      ) : (
       <div className="autolayout">
         <nav className="panel autolist" aria-label="Senaryolar">
           {scenarios.length > 6 && (
@@ -647,6 +676,7 @@ export function Autotest({ route, projectName }: { route: Route; projectName: st
           {creating || selected ? (
             <Editor key={creating ? 'new' : selected!.id} scenario={creating ? null : selected}
                     config={config} projectId={projectId} varsVersion={varsVersion}
+                    initialRun={route.filters?.run ? Number(route.filters.run) : undefined}
                     onSaved={(s) => { if (creating) open(s.id) }}
                     onDeleted={() => open(undefined)} />
           ) : (
@@ -660,6 +690,7 @@ export function Autotest({ route, projectName }: { route: Route; projectName: st
           )}
         </section>
       </div>
+      )}
     </main>
   )
 }

@@ -15,13 +15,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...autotest import ai, variables
+from ...autotest import ai, schedule, variables
 from ...autotest.dsl import assigned, help_lines, includes, parse
 from ...config import get_settings
 from ...db import get_session
-from ...models import AutoRun, AutoScenario, AutoVariable, Case, Run, Test, User
+from ...models import (AutoBatch, AutoPlan, AutoRun, AutoScenario, AutoVariable, Case,
+                      Run, Test, User)
 from ..deps import current_user
-from ..permissions import (WRITE_CASES, WRITE_RESULTS, assert_can, assert_read,
+from ..permissions import (WRITE_CASES, WRITE_RESULTS, WRITE_RUNS, assert_can, assert_read,
                            project_of)
 
 router = APIRouter(prefix="/api", tags=["autotest"])
@@ -558,3 +559,192 @@ def run_automation_stop(run_id: int, user: User = Depends(current_user),
             r.status, r.finished_on = "stopped", _now()
     session.commit()
     return {"stopped": len(live)}
+
+
+# --- plans: scheduled runs ------------------------------------------------------
+
+class PlanIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    is_active: bool = True
+    scenario_ids: list[int] = Field(default_factory=list, max_length=500)
+    days: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4])
+    times: list[str] = Field(default_factory=list, max_length=48)
+    record_run: bool = False
+    notify_user_ids: list[int] = Field(default_factory=list, max_length=100)
+    notify_always: bool = False
+
+
+class PlanPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    is_active: bool | None = None
+    scenario_ids: list[int] | None = Field(default=None, max_length=500)
+    days: list[int] | None = None
+    times: list[str] | None = Field(default=None, max_length=48)
+    record_run: bool | None = None
+    notify_user_ids: list[int] | None = Field(default=None, max_length=100)
+    notify_always: bool | None = None
+
+
+def _clean_schedule(session: Session, project_id: int, values: dict) -> dict:
+    if "times" in values and values["times"] is not None:
+        times = []
+        for t in values["times"]:
+            m = schedule.TIME.match(t.strip())
+            if not m:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                    f"saat SS:DD biçiminde olmalı: {t}")
+            times.append(f"{int(m.group(1)):02d}:{m.group(2)}")
+        values["times"] = sorted(set(times))
+    if "days" in values and values["days"] is not None:
+        if any(d not in range(7) for d in values["days"]):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "gün 0 (Pzt) ile 6 (Paz) arası")
+        values["days"] = sorted(set(values["days"]))
+    if values.get("scenario_ids"):
+        ours = set(session.scalars(select(AutoScenario.id).where(
+            AutoScenario.project_id == project_id,
+            AutoScenario.id.in_(values["scenario_ids"]))))
+        foreign = [i for i in values["scenario_ids"] if i not in ours]
+        if foreign:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "senaryo bu projede bulunamadı")
+        values["scenario_ids"] = list(dict.fromkeys(values["scenario_ids"]))
+    return values
+
+
+def _batch_out(session: Session, b: AutoBatch, runs: bool = False) -> dict:
+    rows = session.scalars(select(AutoRun).where(AutoRun.batch_id == b.id)
+                           .order_by(AutoRun.id)).all()
+    counts = {k: sum(1 for r in rows if r.status == k)
+              for k in ("queued", "running", "passed", "failed", "error", "stopped")}
+    out = {"id": b.id, "plan_id": b.plan_id, "trigger": b.trigger,
+           "created_on": b.created_on, "finished_on": b.finished_on,
+           "started_by": _name(session, b.started_by), "run_ids": b.run_ids or [],
+           "skipped": (b.summary or {}).get("skipped", []),
+           "counts": counts, "total": len(rows)}
+    if runs:
+        names = {sc.id: sc.name for sc in session.scalars(select(AutoScenario).where(
+            AutoScenario.id.in_([r.scenario_id for r in rows] or [0])))}
+        out["runs"] = [{**_run_out(session, r, full=False),
+                        "scenario": names.get(r.scenario_id)} for r in rows]
+    return out
+
+
+def _plan_out(session: Session, p: AutoPlan) -> dict:
+    last = session.scalar(select(AutoBatch).where(AutoBatch.plan_id == p.id)
+                          .order_by(AutoBatch.id.desc()).limit(1))
+    return {"id": p.id, "project_id": p.project_id, "name": p.name,
+            "is_active": p.is_active, "scenario_ids": p.scenario_ids or [],
+            "days": p.days or [], "times": p.times or [], "record_run": p.record_run,
+            "notify_user_ids": p.notify_user_ids or [], "notify_always": p.notify_always,
+            "next_run_at": p.next_run_at if p.is_active else None,
+            "last_run_at": p.last_run_at, "updated_by": _name(session, p.updated_by),
+            "timezone": get_settings().autotest_timezone,
+            "last_batch": _batch_out(session, last) if last else None}
+
+
+@router.get("/projects/{project_id}/autotest/plans")
+def list_plans(project_id: int, user: User = Depends(current_user),
+               session: Session = Depends(get_session)):
+    assert_read(session, user, project_id)
+    rows = session.scalars(select(AutoPlan).where(AutoPlan.project_id == project_id)
+                           .order_by(AutoPlan.name)).all()
+    return [_plan_out(session, p) for p in rows]
+
+
+@router.post("/projects/{project_id}/autotest/plans", status_code=201)
+def create_plan(project_id: int, body: PlanIn, user: User = Depends(current_user),
+                session: Session = Depends(get_session)):
+    assert_read(session, user, project_id)
+    assert_can(session, user, WRITE_RUNS, project_id)
+    values = _clean_schedule(session, project_id, body.model_dump())
+    p = AutoPlan(project_id=project_id, created_by=user.id, updated_by=user.id, **values)
+    p.name = p.name.strip()
+    p.next_run_at = schedule.next_fire(p.days, p.times, _now())
+    session.add(p)
+    session.commit()
+    return _plan_out(session, p)
+
+
+def _plan(session: Session, user: User, plan_id: int, write: bool = False) -> AutoPlan:
+    p = session.get(AutoPlan, plan_id)
+    if p is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "bulunamadi")
+    assert_read(session, user, p.project_id)
+    if write:
+        assert_can(session, user, WRITE_RUNS, p.project_id)
+    return p
+
+
+@router.patch("/autotest/plans/{plan_id}")
+def update_plan(plan_id: int, body: PlanPatch, user: User = Depends(current_user),
+                session: Session = Depends(get_session)):
+    p = _plan(session, user, plan_id, write=True)
+    values = _clean_schedule(session, p.project_id, body.model_dump(exclude_unset=True))
+    for key, value in values.items():
+        if value is not None:
+            setattr(p, key, value.strip() if key == "name" else value)
+    p.next_run_at = schedule.next_fire(p.days, p.times, _now())
+    p.updated_by = user.id
+    session.commit()
+    return _plan_out(session, p)
+
+
+@router.delete("/autotest/plans/{plan_id}", status_code=204)
+def delete_plan(plan_id: int, user: User = Depends(current_user),
+                session: Session = Depends(get_session)):
+    p = _plan(session, user, plan_id, write=True)
+    session.delete(p)
+    session.commit()
+
+
+@router.post("/autotest/plans/{plan_id}/fire", status_code=201)
+def fire_plan(plan_id: int, user: User = Depends(current_user),
+              session: Session = Depends(get_session)):
+    """Run a plan now, outside its schedule."""
+    p = _plan(session, user, plan_id, write=True)
+    assert_can(session, user, WRITE_RESULTS, p.project_id)
+    if not p.scenario_ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "planda senaryo yok")
+    busy = session.scalar(select(AutoBatch).where(
+        AutoBatch.plan_id == p.id, AutoBatch.finished_on.is_(None)))
+    if busy is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "bu plan zaten koşuyor")
+    batch = schedule.fire(session, p, "manual", user.id)
+    session.expire_all()          # the runner writes through its own session
+    return _batch_out(session, batch, runs=True)
+
+
+@router.get("/autotest/plans/{plan_id}/batches")
+def plan_batches(plan_id: int, user: User = Depends(current_user),
+                 session: Session = Depends(get_session)):
+    p = _plan(session, user, plan_id)
+    rows = session.scalars(select(AutoBatch).where(AutoBatch.plan_id == p.id)
+                           .order_by(AutoBatch.id.desc()).limit(30)).all()
+    return [_batch_out(session, b) for b in rows]
+
+
+@router.get("/autotest/batches/{batch_id}")
+def get_batch(batch_id: int, user: User = Depends(current_user),
+              session: Session = Depends(get_session)):
+    b = session.get(AutoBatch, batch_id)
+    if b is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "bulunamadi")
+    assert_read(session, user, b.project_id)
+    return _batch_out(session, b, runs=True)
+
+
+@router.post("/autotest/batches/{batch_id}/stop")
+def stop_batch(batch_id: int, user: User = Depends(current_user),
+               session: Session = Depends(get_session)):
+    b = session.get(AutoBatch, batch_id)
+    if b is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "bulunamadi")
+    assert_read(session, user, b.project_id)
+    assert_can(session, user, WRITE_RESULTS, b.project_id)
+    for r in session.scalars(select(AutoRun).where(
+            AutoRun.batch_id == b.id, AutoRun.status.in_(("queued", "running")))):
+        r.stop_requested = True
+        if r.status == "queued":
+            r.status, r.finished_on = "stopped", _now()
+    session.commit()
+    schedule.finish_batch(session, b.id)
+    return _batch_out(session, b, runs=True)
