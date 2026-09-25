@@ -122,13 +122,19 @@ def dump_delta(t: TestRail, since: int, only: int | None = None) -> dict:
 
         plans = t.all(f"get_plans/{pid}", "plans")
         save(f"projects/{pid}/plans.json", plans)
+        plan_runs = []
         for plan in plans:
-            save(f"projects/{pid}/plan_{plan['id']}.json",
-                 t.get(f"get_plan/{plan['id']}"))
+            detail = t.get(f"get_plan/{plan['id']}")
+            save(f"projects/{pid}/plan_{plan['id']}.json", detail)
+            for entry in detail.get("entries") or []:
+                plan_runs += entry.get("runs") or []
 
         # --- runs ----------------------------------------------------------
         runs = t.all(f"get_runs/{pid}", "runs")
         save(f"projects/{pid}/runs.json", runs)
+        # get_runs leaves out the runs inside a test plan; without these a
+        # result entered in a plan never reached us
+        runs = runs + plan_runs
         known = set(runs_on_disk(pid))
 
         for run in runs:
