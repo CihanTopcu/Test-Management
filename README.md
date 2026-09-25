@@ -50,6 +50,22 @@ PYTHONPATH=backend python -m uvicorn app.main:app --port 8010
 cd frontend && npm install && npm run dev
 ```
 
+Uygulamayı `localhost:5173` yerine **http://dgtest.dgpays.com** ile açmak
+için `hosts` dosyasına (Windows'ta yönetici olarak
+`C:\Windows\System32\drivers\etc\hosts`) şu satırı ekleyin ve ön yüzü 80.
+portta başlatın:
+
+```
+127.0.0.1   dgtest.dgpays.com
+```
+
+```bash
+cd frontend && npm run dev:dgtest
+```
+
+Davet ve parola bağlantılarının bu adresi göstermesi için `.env` içinde
+`PUBLIC_URL=http://dgtest.dgpays.com` olmalı.
+
 Boş bir veritabanında uygulama şemayı kendi kurar, varsayılan durum/tip/
 öncelik/şablon listelerini oluşturur ve `.env` içindeki bilgilerle bir
 yönetici hesabı açar.
