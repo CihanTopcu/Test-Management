@@ -19,7 +19,7 @@ import logging
 import re
 import time
 
-import requests
+import httpx
 
 from .config import get_settings
 
@@ -67,12 +67,11 @@ def _missing(key: str) -> dict:
             "category": None, "type": None, "missing": True}
 
 
-def _session() -> requests.Session:
+def _session() -> httpx.Client:
+    # httpx rather than requests: it is already a dependency of the API image
     s = get_settings()
-    session = requests.Session()
-    session.auth = (s.jira_email, s.jira_api_token)
-    session.headers["Accept"] = "application/json"
-    return session
+    return httpx.Client(auth=(s.jira_email, s.jira_api_token),
+                        headers={"Accept": "application/json"})
 
 
 def _fetch(keys: list[str]) -> dict[str, dict]:
@@ -85,10 +84,10 @@ def _fetch(keys: list[str]) -> dict[str, dict]:
                 r = http.post(f"{base}/rest/api/3/search/jql", timeout=20, json={
                     "jql": f"key in ({', '.join(chunk)})",
                     "fields": FIELDS, "maxResults": len(chunk)})
-            except requests.RequestException as exc:
+            except httpx.HTTPError as exc:
                 log.warning("jira erisilemedi: %s", exc)
                 return out       # nothing cached: try again on the next request
-            if r.ok:
+            if r.status_code < 400:
                 for issue in r.json().get("issues", []):
                     out[issue["key"]] = _shape(issue)
                 # a key renamed by a project move comes back under its new
@@ -101,9 +100,9 @@ def _fetch(keys: list[str]) -> dict[str, dict]:
                 try:
                     one = http.get(f"{base}/rest/api/3/issue/{key}", timeout=20,
                                    params={"fields": ",".join(FIELDS)})
-                except requests.RequestException:
+                except httpx.HTTPError:
                     continue
-                out[key] = _shape(one.json()) if one.ok else _missing(key)
+                out[key] = _shape(one.json()) if one.status_code < 400 else _missing(key)
     return out
 
 
