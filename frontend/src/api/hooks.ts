@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
-  ActivityByUserOut, ActivityItem, AdminSummary, Attachment, AuditPage, AutomationBacklog, CaseExplorerPage, CasePage, Catalog, Coverage, CustomField, DashboardOut, DefectReport, DigestPreview, Distribution, DuplicateGroup, FlakyCase, GroupAdmin, HistoryEntry, Milestone, NeverRunCase, NotificationPreference, Project, ProjectGroupAccess, ProjectMember, ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode, SeriesPoint, SubscriptionList, Suite, SyncStatusOut, Test, TestCase, TestDetail, TestPage, TodayOut, TodoItem, User, UserAccess, UserAdmin,
+  ActivityByUserOut, ActivityItem, AdminSummary, Attachment, AuditPage, AutomationBacklog, CaseExplorerPage, CasePage, Catalog, Coverage, CustomField, DashboardOut, DefectReport, DigestPreview, Distribution, DuplicateGroup, FlakyCase, GroupAdmin, HistoryEntry, Milestone, MilestoneProgress, NeverRunCase, NotificationPreference, PassTrendWeek, Project, ProjectGroupAccess, ProjectMember, ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode, SeriesPoint, SubscriptionList, Suite, SyncStatusOut, Test, TestCase, TestDetail, TestPage, TodayOut, TodoItem, User, UserAccess, UserAdmin,
 } from './types'
 
 /** Lookup tables change about twice a year; keep them for the session. */
@@ -938,6 +938,23 @@ export const useActivitySeries = (projectId?: number, days = 120) =>
     queryKey: ['series', projectId, days],
     queryFn: () => api.get<SeriesPoint[]>(
       `/api/projects/${projectId}/reports/activity?days=${days}`),
+    enabled: !!projectId,
+  })
+
+export const usePassTrend = (projectId?: number, weeks = 26) =>
+  useQuery({
+    queryKey: ['pass-trend', projectId, weeks],
+    queryFn: () => api.get<PassTrendWeek[]>(
+      `/api/projects/${projectId}/reports/pass-trend?weeks=${weeks}`),
+    enabled: !!projectId,
+    placeholderData: (prev) => prev,
+  })
+
+export const useMilestoneProgress = (projectId?: number) =>
+  useQuery({
+    queryKey: ['milestone-progress', projectId],
+    queryFn: () => api.get<MilestoneProgress[]>(
+      `/api/projects/${projectId}/reports/milestones`),
     enabled: !!projectId,
   })
 

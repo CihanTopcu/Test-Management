@@ -122,11 +122,40 @@ export interface DashboardProject {
   results_in_window: number
   open_milestones: number
   overdue_milestones: number
+  /** weekly pass rate of the verdicts entered, oldest first; null = none */
+  trend: (number | null)[]
+}
+
+export interface PassTrendWeek {
+  /** the Monday, ISO */
+  week: string
+  results: number
+  passed: number
+  failed: number
+  other: number
+  pass_rate: number | null
+}
+
+export interface MilestoneProgress {
+  id: number
+  name: string
+  parent_id: number | null
+  is_completed: boolean
+  due_on: string | null
+  overdue: boolean
+  passed: number
+  failed: number
+  other: number
+  untested: number
+  runs: number
+  total: number
+  pass_rate: number | null
 }
 
 export interface DashboardOut {
   days: number
   generated_on: string
+  trend_weeks: string[]
   totals: {
     projects: number
     cases: number

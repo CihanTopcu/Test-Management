@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 
 from ...db import get_session
 from ...models import (Case, CaseType, CustomField, CustomFieldOption,
-                       Priority, Result, Run, Section, Suite, Test, User)
+                       Milestone, Priority, Result, Run, Section, Suite, Test,
+                       User)
 from ..deps import current_user
 from ..schemas import DistributionOut, SeriesPoint
 from ..permissions import read_project
@@ -356,3 +357,118 @@ def automation_backlog(project_id: int, limit: int = Query(50, le=200),
             if marked else
             "Bu projede elle koşulan olarak işaretli case yok.")
     return payload
+
+
+PASSED, UNTESTED, FAILED = 1, 3, 5
+
+
+def week_start(day) -> str:
+    """The Monday of the week a date falls in, as an ISO date."""
+    return (day - timedelta(days=day.weekday())).isoformat()
+
+
+@router.get("/pass-trend")
+def pass_trend(project_id: int, weeks: int = Query(26, ge=4, le=104),
+               session: Session = Depends(get_session)):
+    """How the verdicts entered each week split: the pass rate over time.
+
+    Per week of *results entered*, not per run, because a run's state is a
+    snapshot and this is the question "are we getting better": of what was
+    tested that week, how much passed. Retests count as entered, which is
+    what a team lead reading the line expects. A week with no results is
+    returned as such (rate null) -- drawn as a gap, never as 0%, since "no
+    testing" and "everything failed" are not the same week.
+    """
+    today = datetime.now(timezone.utc).date()
+    first = today - timedelta(days=today.weekday()) - timedelta(weeks=weeks - 1)
+    rows = session.execute(
+        select(func.date_trunc("week", func.timezone("UTC", Result.created_on)).label("wk"),
+               Result.status_id, func.count())
+        .join(Test, Result.test_id == Test.id)
+        .join(Run, Test.run_id == Run.id)
+        .where(Run.project_id == project_id,
+               Result.created_on >= datetime.combine(first, datetime.min.time(),
+                                                     tzinfo=timezone.utc),
+               Result.status_id.is_not(None), Result.status_id != UNTESTED)
+        .group_by("wk", Result.status_id)).all()
+
+    tally: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"passed": 0, "failed": 0, "other": 0})
+    for wk, status_id, n in rows:
+        key = week_start(wk.date())
+        bucket = ("passed" if status_id == PASSED
+                  else "failed" if status_id == FAILED else "other")
+        tally[key][bucket] += n
+
+    out = []
+    for i in range(weeks):
+        key = (first + timedelta(weeks=i)).isoformat()
+        t = tally.get(key, {"passed": 0, "failed": 0, "other": 0})
+        results = t["passed"] + t["failed"] + t["other"]
+        out.append({"week": key, "results": results, **t,
+                    "pass_rate": round(100 * t["passed"] / results, 1) if results else None})
+    return out
+
+
+@router.get("/milestones")
+def milestone_progress(project_id: int,
+                       include_completed: bool = False,
+                       session: Session = Depends(get_session)):
+    """Where each milestone stands: its tests by verdict, and its date.
+
+    A milestone's runs include those of its sub-milestones (one level, as
+    TestRail nests them), so a release milestone made of sprints shows the
+    sum of its sprints. Archived runs are left out: they are release history,
+    not the state of the work.
+    """
+    milestones = session.scalars(
+        select(Milestone).where(Milestone.project_id == project_id)).all()
+    parent_of = {m.id: m.parent_id for m in milestones}
+
+    counts: dict[int, dict[str, int]] = defaultdict(
+        lambda: {"passed": 0, "failed": 0, "other": 0, "untested": 0, "runs": 0})
+    run_rows = session.execute(
+        select(Run.id, Run.milestone_id)
+        .where(Run.project_id == project_id, Run.milestone_id.is_not(None),
+               Run.is_archived.is_(False))).all()
+    owner = {}
+    for run_id, mid in run_rows:
+        owner[run_id] = mid
+        counts[mid]["runs"] += 1
+        if parent_of.get(mid):
+            counts[parent_of[mid]]["runs"] += 1
+    if owner:
+        for run_id, status_id, n in session.execute(
+                select(Test.run_id, Test.status_id, func.count())
+                .where(Test.run_id.in_(list(owner)))
+                .group_by(Test.run_id, Test.status_id)):
+            bucket = ("passed" if status_id == PASSED
+                      else "failed" if status_id == FAILED
+                      else "untested" if status_id in (None, UNTESTED) else "other")
+            mid = owner[run_id]
+            counts[mid][bucket] += n
+            if parent_of.get(mid):
+                counts[parent_of[mid]][bucket] += n
+
+    now = datetime.now(timezone.utc)
+    out = []
+    for m in milestones:
+        if m.is_completed and not include_completed:
+            continue
+        c = counts.get(m.id, {"passed": 0, "failed": 0, "other": 0, "untested": 0, "runs": 0})
+        total = c["passed"] + c["failed"] + c["other"] + c["untested"]
+        due = m.due_on
+        if due is not None and due.tzinfo is None:
+            due = due.replace(tzinfo=timezone.utc)
+        out.append({
+            "id": m.id, "name": m.name, "parent_id": m.parent_id,
+            "is_completed": m.is_completed,
+            "due_on": m.due_on, "overdue": bool(due and due < now and not m.is_completed),
+            **c, "total": total,
+            "pass_rate": round(100 * c["passed"] / total) if total else None,
+        })
+    # dated ones first, soonest first; undated after, by name
+    out.sort(key=lambda r: (r["due_on"] is None,
+                            r["due_on"] or datetime.max.replace(tzinfo=timezone.utc),
+                            r["name"].lower()))
+    return out

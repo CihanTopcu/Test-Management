@@ -3,6 +3,7 @@ import { useDashboard } from '../api/hooks'
 import { ActivityByUser } from '../components/ActivityByUser'
 import { Icon } from '../components/Icon'
 import { MiniBar, statusColor } from '../components/Status'
+import { Sparkline } from '../components/Charts'
 import { useCatalog } from '../api/hooks'
 import { href } from '../route'
 
@@ -99,6 +100,10 @@ export function Dashboard() {
                 </th>
               ))}
               <th style={{ width: 170 }}>Durum</th>
+              {/* direction, not values: the pass-rate column carries the number */}
+              <th style={{ width: 120 }} title="Son 12 haftada girilen sonuçların haftalık geçme oranı">
+                12 hafta
+              </th>
               <th style={{ width: 120, textAlign: 'right', cursor: 'pointer' }}
                   onClick={() => setSort('results_in_window')}>
                 {days} gün{sort === 'results_in_window' && ' ▾'}
@@ -143,6 +148,13 @@ export function Dashboard() {
                       untested_count: p.untested,
                     }} />
                   )}
+                </td>
+                <td>
+                  <Sparkline values={p.trend}
+                             label={`${p.name}: son 12 haftanın geçme oranı`
+                               + (p.trend.some((v) => v != null)
+                                 ? `, son ölçüm %${[...p.trend].reverse().find((v) => v != null)}`
+                                 : ', sonuç yok')} />
                 </td>
                 <td style={{ textAlign: 'right' }}>
                   {p.results_in_window

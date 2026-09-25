@@ -1,14 +1,25 @@
 import { useMemo, useState } from 'react'
 import {
   useActivitySeries, useCatalog, useCoverage, useDefects, useDistribution,
+  useMilestoneProgress, usePassTrend,
 } from '../api/hooks'
+import type { Catalog } from '../api/types'
+import { StackBar, TrendChart } from '../components/Charts'
+import { Icon } from '../components/Icon'
 import { inkOn, statusColor, statusLabel } from '../components/Status'
 import { QualityReport } from '../components/QualityReport'
 import { href, type Route } from '../route'
 import { Crumbs } from '../components/Crumbs'
 
-const PALETTE = ['#1c6ea4', '#6ca644', '#d99a2b', '#a9457c', '#4a8fb5',
-                 '#8a8a8a', '#5c7cb0', '#b8703f']
+/** Time windows for the charts over time: one choice, above them, for both. */
+const RANGES = [
+  { key: '3a', label: 'Son 3 ay', days: 90, weeks: 13 },
+  { key: '6a', label: 'Son 6 ay', days: 180, weeks: 26 },
+  { key: '12a', label: 'Son 12 ay', days: 365, weeks: 52 },
+]
+
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })
 
 /** A bar is a question with an answer behind it, so it becomes a link
  *  wherever the caller can say where that answer lives. */
@@ -29,7 +40,9 @@ function Bars({ buckets, total, colorAt, linkAt }: {
             <span className="track">
               <span className="fill"
                     style={{ width: `${(b.count / max) * 100}%`,
-                             background: colorAt?.(i) ?? PALETTE[i % PALETTE.length] }} />
+                             // one measure per bar, each bar labelled: a hue per bar carried
+                             // nothing but noise
+                             background: colorAt?.(i) ?? 'var(--accent)' }} />
             </span>
             <span className="val">
               {b.count.toLocaleString('tr-TR')}
@@ -48,8 +61,7 @@ function Bars({ buckets, total, colorAt, linkAt }: {
 
 /** Stacked daily columns. A real chart library would be a lot of bytes for
  *  one bar chart that only ever shows counts per day. */
-function Activity({ route }: { route: Route }) {
-  const [days, setDays] = useState(120)
+function Activity({ route, days }: { route: Route; days: number }) {
   const { data: series = [] } = useActivitySeries(route.project, days)
   const { data: catalog } = useCatalog()
 
@@ -65,12 +77,6 @@ function Activity({ route }: { route: Route }) {
     <div className="panel report-card">
       <div className="row" style={{ marginBottom: 10 }}>
         <h3 style={{ margin: 0 }}>Sonuç girişi (günlük)</h3>
-        <div className="right chiprow">
-          {[30, 120, 365].map((d) => (
-            <button key={d} className={`chip-toggle ${days === d ? 'on' : ''}`}
-                    onClick={() => setDays(d)}>{d} gün</button>
-          ))}
-        </div>
       </div>
 
       {series.length === 0 ? (
@@ -114,12 +120,158 @@ function Activity({ route }: { route: Route }) {
   )
 }
 
+/** Of the verdicts entered each week, the share that passed. */
+function PassTrend({ route, weeks }: { route: Route; weeks: number }) {
+  const { data = [], isFetching } = usePassTrend(route.project, weeks)
+  const [asTable, setAsTable] = useState(false)
+  const tested = data.filter((w) => w.results > 0)
+  const latest = tested[tested.length - 1]
+
+  return (
+    <div className="panel report-card" style={{ opacity: isFetching ? 0.6 : 1 }}>
+      <div className="row" style={{ marginBottom: 4 }}>
+        <h3 style={{ margin: 0 }}>Geçme oranı trendi</h3>
+        <button className="ghost small right" onClick={() => setAsTable(!asTable)}>
+          {asTable ? 'Grafik' : 'Tablo'}
+        </button>
+      </div>
+      <div className="small muted" style={{ marginBottom: 12 }}>
+        Her hafta girilen sonuçlardan geçenlerin oranı. Sonuç girilmeyen
+        haftalar boşluk olarak kalır, sıfır sayılmaz.
+        {latest && <> Son ölçüm: <b>%{latest.pass_rate}</b> ({shortDate(latest.week)} haftası,
+          {' '}{latest.results.toLocaleString('tr-TR')} sonuç).</>}
+      </div>
+
+      {tested.length === 0 ? (
+        <span className="faint small">Bu dönemde sonuç girilmemiş.</span>
+      ) : asTable ? (
+        <div style={{ maxHeight: 280, overflow: 'auto' }}>
+          <table className="grid">
+            <thead>
+              <tr>
+                <th>Hafta</th>
+                <th style={{ textAlign: 'right' }}>Sonuç</th>
+                <th style={{ textAlign: 'right' }}>Geçti</th>
+                <th style={{ textAlign: 'right' }}>Kaldı</th>
+                <th style={{ textAlign: 'right' }}>Diğer</th>
+                <th style={{ textAlign: 'right' }}>Geçme</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...tested].reverse().map((w) => (
+                <tr key={w.week} style={{ cursor: 'default' }}>
+                  <td>{shortDate(w.week)}</td>
+                  <td style={{ textAlign: 'right' }}>{w.results.toLocaleString('tr-TR')}</td>
+                  <td style={{ textAlign: 'right' }}>{w.passed.toLocaleString('tr-TR')}</td>
+                  <td style={{ textAlign: 'right' }}>{w.failed.toLocaleString('tr-TR')}</td>
+                  <td style={{ textAlign: 'right' }}>{w.other.toLocaleString('tr-TR')}</td>
+                  <td style={{ textAlign: 'right' }}><b>%{w.pass_rate}</b></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <TrendChart
+          ariaLabel={`Haftalık geçme oranı, son ${weeks} hafta`}
+          points={data.map((w) => ({
+            label: shortDate(w.week),
+            value: w.pass_rate,
+            detail: w.results
+              ? [`${w.results.toLocaleString('tr-TR')} sonuç`,
+                 `${w.passed} geçti · ${w.failed} kaldı${w.other ? ` · ${w.other} diğer` : ''}`]
+              : ['bu hafta sonuç girilmedi'],
+          }))}
+          // a label at each month's first week
+          tickLabel={(_label, i) => {
+            const month = new Date(data[i].week).getMonth()
+            return i === 0 || new Date(data[i - 1].week).getMonth() !== month
+              ? new Date(data[i].week).toLocaleDateString('tr-TR', { month: 'short' })
+              : null
+          }} />
+      )}
+    </div>
+  )
+}
+
+function verdictSegments(catalog: Catalog | undefined, c: {
+  passed: number; failed: number; other: number; untested: number
+}) {
+  return [
+    { key: 'passed', label: 'Geçti', count: c.passed, color: statusColor(catalog, 1) },
+    { key: 'failed', label: 'Kaldı', count: c.failed, color: statusColor(catalog, 5) },
+    { key: 'other', label: 'Diğer sonuç', count: c.other, color: statusColor(catalog, 4) },
+    { key: 'untested', label: 'Sonuçsuz', count: c.untested, color: statusColor(catalog, 3) },
+  ]
+}
+
+/** Each open milestone: its date, and its tests by verdict. */
+function MilestoneProgressCard({ route }: { route: Route }) {
+  const { data = [] } = useMilestoneProgress(route.project)
+  const { data: catalog } = useCatalog()
+  const withRuns = data.filter((m) => m.total > 0)
+  const empty = data.filter((m) => m.total === 0)
+
+  return (
+    <div className="panel report-card">
+      <div className="row" style={{ marginBottom: 6 }}>
+        <h3 style={{ margin: 0 }}>Milestone ilerlemesi</h3>
+        <span className="faint small right">açık milestone’lar, alt milestone’lar dahil</span>
+      </div>
+      {data.length === 0 ? (
+        <span className="faint small">Açık milestone yok.</span>
+      ) : (
+        <>
+          <div className="barkey" style={{ margin: '4px 0 6px' }}>
+            {verdictSegments(catalog, { passed: 0, failed: 0, other: 0, untested: 0 }).map((seg) => (
+              <span key={seg.key}><i style={{ background: seg.color }} />{seg.label.toLowerCase()}</span>
+            ))}
+          </div>
+          {withRuns.map((m) => (
+            <div className="msrow" key={m.id}>
+              <div className="name">
+                <a href={href({ page: 'milestones', project: route.project, milestone: m.id })}>
+                  {m.name}
+                </a>
+                <div className={`when ${m.overdue ? 'late' : ''}`}>
+                  {m.overdue && <Icon name="warning" size={12} />}{' '}
+                  {m.due_on
+                    ? `${m.overdue ? 'gecikmiş · ' : ''}bitiş ${new Date(m.due_on).toLocaleDateString('tr-TR')}`
+                    : 'tarih yok'}
+                </div>
+              </div>
+              <div className="bar">
+                <StackBar total={m.total} segments={verdictSegments(catalog, m)}
+                          ariaLabel={`${m.name}: ${m.passed} geçti, ${m.failed} kaldı, ${m.other} diğer, ${m.untested} sonuçsuz`} />
+              </div>
+              <div className="figure">
+                <b>%{m.pass_rate ?? 0}</b> geçti
+                <div className="faint">
+                  {m.total.toLocaleString('tr-TR')} test · {m.runs} koşum
+                </div>
+              </div>
+            </div>
+          ))}
+          {empty.length > 0 && (
+            <div className="faint small" style={{ marginTop: 10 }}>
+              {empty.length} milestone’a henüz koşum bağlanmamış:{' '}
+              {empty.slice(0, 6).map((m) => m.name).join(', ')}
+              {empty.length > 6 && ` ve ${empty.length - 6} tane daha`}.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export function Reports({ route, projectName }: { route: Route; projectName: string }) {
   const { data: byType } = useDistribution(route.project, 'type')
   const { data: byPriority } = useDistribution(route.project, 'priority')
   const { data: coverage } = useCoverage(route.project)
   const { data: defects } = useDefects(route.project)
   const { data: catalog } = useCatalog()
+  const [range, setRange] = useState(RANGES[1])
 
   /** Where a chart sends you: the filtered case list, in the address bar. */
   const explore = (filters: Record<string, string>) =>
@@ -188,6 +340,28 @@ export function Reports({ route, projectName }: { route: Route; projectName: str
         </div>
       )}
 
+      <div style={{ marginBottom: 14 }}>
+        <MilestoneProgressCard route={route} />
+      </div>
+
+      {/* one time window, above the charts it scopes */}
+      <div className="section-rule">
+        Zaman içinde
+        <div className="chiprow" style={{ order: 2 }}>
+          {RANGES.map((r) => (
+            <button key={r.key} className={`chip-toggle ${range.key === r.key ? 'on' : ''}`}
+                    onClick={() => setRange(r)}>{r.label}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <PassTrend route={route} weeks={range.weeks} />
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <Activity route={route} days={range.days} />
+      </div>
+
+      <div className="section-rule">Case kütüphanesi</div>
       <div className="cards" style={{ marginBottom: 14 }}>
         <div className="panel report-card">
           <h3>{byType?.title ?? 'Case tipi dağılımı'}</h3>
@@ -205,10 +379,6 @@ export function Reports({ route, projectName }: { route: Route; projectName: str
                   return id == null ? undefined : explore({ priority_id: String(id) })
                 }} />
         </div>
-      </div>
-
-      <div style={{ marginBottom: 14 }}>
-        <Activity route={route} />
       </div>
 
       <div className="cards">

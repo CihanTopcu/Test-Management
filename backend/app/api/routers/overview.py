@@ -15,6 +15,9 @@ from ..schemas import ActivityItem, ProjectStats, TodoItem
 router = APIRouter(prefix="/api", tags=["overview"])
 
 
+TREND_WEEKS = 12
+
+
 def _within(ids: set[int] | None, column) -> list:
     """A where-clause list limiting `column` to `ids`; None means no limit."""
     if ids is None:
@@ -169,6 +172,33 @@ def dashboard(days: int = 30, session: Session = Depends(get_session),
         .where(Result.created_on >= since)
         .group_by(Run.project_id)).all())
 
+    # the last twelve weeks' pass rate per project, for the sparkline: of
+    # the verdicts entered that week, the share that passed (null = none)
+    today = datetime.now(timezone.utc).date()
+    first_week = today - timedelta(days=today.weekday()) - timedelta(weeks=TREND_WEEKS - 1)
+    weekly: dict[int, dict[str, list[int]]] = {}
+    for pid, wk, status_id, n in session.execute(
+            select(Run.project_id, func.date_trunc("week", func.timezone("UTC", Result.created_on)).label("wk"),
+                   Result.status_id, func.count())
+            .select_from(Result)
+            .join(Test, Result.test_id == Test.id)
+            .join(Run, Test.run_id == Run.id)
+            .where(Result.created_on >= datetime.combine(
+                       first_week, datetime.min.time(), tzinfo=timezone.utc),
+                   Result.status_id.is_not(None), Result.status_id != UNTESTED)
+            .group_by(Run.project_id, "wk", Result.status_id)):
+        slot = weekly.setdefault(pid, {}).setdefault(
+            (wk.date() - timedelta(days=wk.date().weekday())).isoformat(), [0, 0])
+        slot[1] += n
+        if status_id == PASSED:
+            slot[0] += n
+    week_keys = [(first_week + timedelta(weeks=i)).isoformat() for i in range(TREND_WEEKS)]
+
+    def trend(pid: int) -> list[float | None]:
+        weeks = weekly.get(pid, {})
+        return [round(100 * weeks[k][0] / weeks[k][1], 1) if k in weeks else None
+                for k in week_keys]
+
     open_milestones = dict(session.execute(
         select(Milestone.project_id, func.count())
         .where(Milestone.is_completed.is_(False))
@@ -203,6 +233,7 @@ def dashboard(days: int = 30, session: Session = Depends(get_session),
             "results_in_window": recent.get(project.id, 0),
             "open_milestones": open_milestones.get(project.id, 0),
             "overdue_milestones": overdue.get(project.id, 0),
+            "trend": trend(project.id),
         })
 
     return {
@@ -219,6 +250,7 @@ def dashboard(days: int = 30, session: Session = Depends(get_session),
         },
         "projects": items,
         "names": names,
+        "trend_weeks": week_keys,
     }
 
 

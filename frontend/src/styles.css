@@ -1409,3 +1409,72 @@ tr.muted-row td:last-child { opacity: 1; }
   .bulkbar { flex-wrap: wrap; }
   .runsummary { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---- charts (components/Charts.tsx) --------------------------------------
+   Thin marks, hairline solid grid, text in text colours; the series colour
+   is only ever on the data. */
+.chart { position: relative; width: 100%; outline: none; }
+.chart:focus-visible { box-shadow: 0 0 0 3px var(--accent-ring); border-radius: var(--radius-sm); }
+.chart svg { display: block; overflow: visible; }
+.chart .grid, .spark-line .grid { stroke: var(--border); stroke-width: 1; }
+.chart .axis {
+  fill: var(--text-faint); font-size: 11px;
+  font-variant-numeric: tabular-nums; font-family: var(--sans);
+}
+.chart .line {
+  fill: none; stroke: var(--accent); stroke-width: 2;
+  stroke-linejoin: round; stroke-linecap: round;
+}
+.chart .area { fill: var(--accent); opacity: 0.1; }
+.chart .dot { fill: var(--accent); }
+.chart .dot.end { stroke: var(--surface); stroke-width: 2; }
+.chart .crosshair { stroke: var(--text-faint); stroke-width: 1; }
+
+.chart-tip {
+  position: absolute; transform: translate(-50%, -100%); z-index: 5;
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 7px 10px; pointer-events: none; white-space: nowrap;
+  background: var(--surface-2); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-md);
+  font-size: 12px;
+}
+.chart-tip b { font-size: 14px; font-weight: 700; color: var(--text); }
+.chart-tip.below { transform: translate(-50%, 0); }
+/* the stack bar's readout hangs under the bar */
+.stackbar .chart-tip.below { top: 100%; transform: translate(-50%, 8px); }
+
+.spark-line { display: block; overflow: visible; }
+.spark-line path { fill: none; stroke: var(--text-faint); stroke-width: 1.5; stroke-linejoin: round; }
+.spark-line .pt { fill: var(--text-faint); }
+.spark-line .now { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+
+.stackbar {
+  position: relative; display: flex; gap: 2px; height: 10px; width: 100%;
+}
+.stackbar > span {
+  display: block; min-width: 3px; height: 100%; cursor: default; outline: none;
+  transition: filter .12s var(--ease);
+}
+.stackbar > span:first-child { border-radius: 4px 0 0 4px; }
+.stackbar > span:last-child { border-radius: 0 4px 4px 0; }
+.stackbar > span:only-child { border-radius: 4px; }
+.stackbar > span:hover, .stackbar > span:focus-visible { filter: brightness(1.18); }
+.stackbar.empty { background: var(--untested); border-radius: 4px; opacity: .5; }
+
+/* milestone progress rows on the reports page */
+.msrow {
+  display: grid; grid-template-columns: minmax(160px, 1.1fr) minmax(180px, 2fr) 150px;
+  gap: 8px 18px; align-items: center; padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+.msrow:last-child { border-bottom: none; }
+.msrow .name { min-width: 0; }
+.msrow .name a { color: var(--text); font-weight: 600; }
+.msrow .when { font-size: 12px; color: var(--text-faint); }
+.msrow .when.late { color: var(--danger); }
+.msrow .figure { text-align: right; font-size: 12.5px; color: var(--text-dim); }
+.msrow .figure b { color: var(--text); font-size: 14px; }
+@media (max-width: 760px) {
+  .msrow { grid-template-columns: minmax(0, 1fr) auto; }
+  .msrow .bar { grid-column: 1 / -1; grid-row: 2; }
+}
