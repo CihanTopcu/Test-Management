@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ...autotest import ai, variables
-from ...autotest.dsl import help_lines, parse
+from ...autotest.dsl import assigned, help_lines, includes, parse
 from ...config import get_settings
 from ...db import get_session
 from ...models import AutoRun, AutoScenario, AutoVariable, Case, Run, Test, User
@@ -95,6 +95,7 @@ def _scenario_out(session: Session, s: AutoScenario, last: AutoRun | None = None
         "id": s.id, "project_id": s.project_id, "name": s.name,
         "description": s.description, "steps": s.steps,
         "case_id": s.case_id, "case_title": _case_title(session, s.case_id),
+        "data": s.data,
         "updated_on": s.updated_at, "updated_by": _name(session, s.updated_by),
         "last_run": _run_out(session, last, full=False) if last else None,
     }
@@ -106,12 +107,13 @@ def _scenario_out(session: Session, s: AutoScenario, last: AutoRun | None = None
 def config(_: User = Depends(current_user)):
     settings = get_settings()
     return {"ai": ai.enabled(), "headless": settings.autotest_headless,
-            "commands": help_lines()}
+            "commands": help_lines(), "builtins": sorted(variables.BUILTINS)}
 
 
 class Check(BaseModel):
     steps: str = Field(max_length=50_000)
     project_id: int | None = None
+    data: str | None = Field(default=None, max_length=200_000)
 
 
 @router.post("/autotest/check")
@@ -119,16 +121,30 @@ def check(body: Check, user: User = Depends(current_user),
           session: Session = Depends(get_session)):
     steps, errors = parse(body.steps)
     out = [{"line": e.line, "message": e.message} for e in errors]
+    rows, data_error = variables.parse_data(body.data)
     if body.project_id is not None:
         assert_read(session, user, body.project_id)
         known = set(session.scalars(select(AutoVariable.name).where(
             AutoVariable.project_id == body.project_id)))
+        # names the scenario makes itself, the data set's columns and the
+        # loop and row counters; a name only an included scenario sets is
+        # reported here too, and resolves at run time
+        known |= assigned(steps) | set(rows[0] if rows else ()) | {"tur", "satir"}
         for number, line in enumerate(body.steps.splitlines(), 1):
             for name in sorted(variables.referenced(line) - known):
-                out.append({"line": number,
-                            "message": "tanımsız değişken: {{" + name + "}}"})
+                if not variables.is_known(name):
+                    out.append({"line": number,
+                                "message": "tanımsız değişken: {{" + name + "}}"})
+        names = set(session.scalars(select(AutoScenario.name).where(
+            AutoScenario.project_id == body.project_id)))
+        wanted = includes(steps)
+        for number, line in enumerate(body.steps.splitlines(), 1):
+            for name in wanted:
+                if name not in names and f'"{name}"' in line and "kullan" in line.lower():
+                    out.append({"line": number, "message": f'"{name}" adında bir senaryo yok'})
     out.sort(key=lambda e: e["line"])
-    return {"count": len(steps), "errors": out}
+    return {"count": len(steps), "errors": out, "rows": len(rows),
+            "data_error": data_error}
 
 
 class Draft(BaseModel):
@@ -155,6 +171,7 @@ class ScenarioIn(BaseModel):
     description: str | None = Field(default=None, max_length=8000)
     steps: str = Field(default="", max_length=50_000)
     case_id: int | None = None
+    data: str | None = Field(default=None, max_length=200_000)
 
 
 class ScenarioPatch(BaseModel):
@@ -162,6 +179,7 @@ class ScenarioPatch(BaseModel):
     description: str | None = Field(default=None, max_length=8000)
     steps: str | None = Field(default=None, max_length=50_000)
     case_id: int | None = None
+    data: str | None = Field(default=None, max_length=200_000)
 
 
 def _check_case(session: Session, project_id: int, case_id: int | None) -> None:
@@ -192,7 +210,8 @@ def create_scenario(project_id: int, body: ScenarioIn, user: User = Depends(curr
     _check_case(session, project_id, body.case_id)
     s = AutoScenario(project_id=project_id, name=body.name.strip(),
                      description=body.description, steps=body.steps,
-                     case_id=body.case_id, created_by=user.id, updated_by=user.id)
+                     case_id=body.case_id, data=body.data or None,
+                     created_by=user.id, updated_by=user.id)
     session.add(s)
     session.commit()
     return _scenario_out(session, s)
@@ -254,6 +273,9 @@ def start_run(scenario_id: int, body: StartRun | None = None,
     if errors:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             "; ".join(f"{e.line}. satır: {e.message}" for e in errors))
+    _, data_error = variables.parse_data(s.data)
+    if data_error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, data_error)
     busy = session.scalar(select(AutoRun).where(
         AutoRun.scenario_id == s.id, AutoRun.status.in_(("queued", "running"))))
     if busy is not None:

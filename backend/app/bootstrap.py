@@ -134,6 +134,7 @@ def ensure_search_indexes() -> None:
 LATE_COLUMNS = [
     ("sections", "is_deleted", "boolean NOT NULL DEFAULT false"),
     ("projects", "default_role_id", "integer REFERENCES roles(id)"),
+    ("auto_scenarios", "data", "text"),
     ("auto_scenarios", "case_id", "bigint REFERENCES cases(id) ON DELETE SET NULL"),
     ("auto_runs", "test_id", "bigint REFERENCES tests(id) ON DELETE SET NULL"),
     ("auto_runs", "result_id", "bigint REFERENCES results(id) ON DELETE SET NULL"),

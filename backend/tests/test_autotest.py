@@ -248,3 +248,92 @@ def test_a_waiting_batch_can_be_stopped(app_client, admin, project, suite, make_
                            headers=admin).json()["stopped"] == 2
     state = app_client.get(f"/api/runs/{kosum['id']}/autotest", headers=admin).json()
     assert state["live"] == 0 and state["counts"]["stopped"] == 2
+
+
+DYNAMIC_PAGE = """<html><head><meta charset=utf-8><title>Dinamik</title></head><body>
+<label for=e>E-posta</label><input id=e>
+<button onclick="n=(window.n||0)+1;window.n=n;document.getElementById('c').textContent='Sayaç '+n">Artır</button>
+<span id=c>Sayaç 0</span>
+<p class=item>bir</p><p class=item>iki</p>
+<p id=ord>SIP-12345</p></body></html>"""
+
+
+def test_blocks_are_read_as_a_tree():
+    steps, errors = parse("""Tekrarla 2
+  Eğer "a"
+    Tıkla "b"
+  Değilse
+    Ata X = "1"
+  Bitti
+Bitti
+Kaydet "css:#x" -> SONUC
+Say "css:.s" = 3""")
+    assert not errors
+    loop = steps[0]
+    assert loop.verb == "tekrarla" and loop.args == [2]
+    branch = loop.children[0]
+    assert [s.verb for s in branch.children] == ["tikla"]
+    assert [s.verb for s in branch.otherwise] == ["ata"]
+    assert steps[1].args == ["css:#x", "SONUC"] and steps[2].args == ["css:.s", 3]
+
+    _, errors = parse('Eğer "a"\nTıkla "b"\nBitti\nBitti\nDeğilse\nTekrarla 2')
+    assert [e.message for e in errors] == [
+        "Bitti'ye karşılık gelen bir blok yok",
+        "Değilse yalnız bir Eğer bloğunun içinde olur",
+        "Tekrarla bloğu Bitti ile kapanmamış"]
+
+
+def test_dynamic_scenario_with_a_data_set(app_client, admin, project, browser, tmp_path):
+    page = tmp_path / "dinamik.html"
+    page.write_text(DYNAMIC_PAGE, encoding="utf-8")
+    base = f"/api/projects/{project['id']}/autotest/scenarios"
+    app_client.post(base, headers=admin, json={
+        "name": "Sayfayı aç", "steps": f"Git {pathlib.Path(page).as_uri()}"})
+    steps = """Kullan "Sayfayı aç"
+Yaz "E-posta" = "{{EPOSTA}}"
+Değer "E-posta" = "{{BEKLENEN}}"
+Kaydet "css:#ord" -> SIPARIS
+Ata KOPYA = "{{SIPARIS}}/{{satir}}"
+Yaz "E-posta" = "{{KOPYA}}"
+Tekrarla 3
+  Tıkla "Artır"
+Bitti
+Gör "Sayaç 3"
+Say "css:.item" = 2
+Eğer "Kampanya"
+  Tıkla "Olmayan düğme"
+Değilse
+  Gör "SIP-12345"
+Bitti
+Yaz "E-posta" = "{{rastgele.tckn}}"
+"""
+    data = "EPOSTA;BEKLENEN\nali@dgpays.com;ali@dgpays.com\nveli@dgpays.com;yanlis@dgpays.com"
+    check = app_client.post("/api/autotest/check", headers=admin, json={
+        "project_id": project["id"], "steps": steps, "data": data}).json()
+    assert check["errors"] == [] and check["rows"] == 2
+
+    s = app_client.post(base, headers=admin, json={
+        "name": "Dinamik", "steps": steps, "data": data}).json()
+    run = app_client.post(f"/api/autotest/scenarios/{s['id']}/runs", headers=admin).json()
+    run = app_client.get(f"/api/autotest/runs/{run['id']}", headers=admin).json()
+    log = run["log"]
+
+    rows = [x for x in log if x.get("kind") == "row"]
+    assert [x["status"] for x in rows] == ["passed", "failed"]
+    assert run["status"] == "failed"
+    first = [x for x in log if x.get("row") == 1 and x.get("kind") != "row"]
+    assert all(x["status"] == "passed" for x in first)
+    notes = {x["text"]: x.get("note") for x in first}
+    assert notes['Kaydet "css:#ord" -> SIPARIS'] == "SIPARIS = SIP-12345"
+    assert notes['Ata KOPYA = "{{SIPARIS}}/{{satir}}"'] == "KOPYA = SIP-12345/1"
+    assert sum(1 for x in first if x["text"] == 'Tıkla "Artır"') == 3
+    assert next(x for x in first if x["text"] == 'Gör "SIP-12345"')["depth"] == 1
+    assert not any(x["text"] == 'Tıkla "Olmayan düğme"' for x in first)
+    # the included scenario's step is logged one level in
+    assert first[1]["text"].startswith("Git file:") and first[1]["depth"] == 1
+
+    second = [x for x in log if x.get("row") == 2 and x.get("kind") != "row"]
+    failed = next(x for x in second if x["status"] == "failed")
+    assert failed["text"] == 'Değer "E-posta" = "{{BEKLENEN}}"'
+    assert "yanlis@dgpays.com" in failed["message"]
+    assert second[-1]["status"] == "skipped"

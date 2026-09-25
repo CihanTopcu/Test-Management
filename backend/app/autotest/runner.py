@@ -84,6 +84,8 @@ def _candidates(page, kind: str, target: str):
         ]
     if kind == "text":
         return [page.get_by_text(target, exact=True), page.get_by_text(target)]
+    if kind == "any":
+        return _candidates(page, "field", target) + _candidates(page, "text", target)
     raise ValueError(kind)
 
 
@@ -119,10 +121,13 @@ def visible_text(page, target: str) -> bool:
 
 # --- the commands --------------------------------------------------------------
 
-def run_step(page, step: Step, timeout: float) -> str | None:
-    """Carry out one step. Returns a short note worth showing, or None."""
+def run_step(page, step: Step, timeout: float, values: dict | None = None) -> str | None:
+    """Carry out one plain (non-block) step. Returns a short note worth
+    showing, or None. Ata and Kaydet write into `values`."""
     v, a = step.verb, step.args
     ms = int(timeout * 1000)
+    if values is None:
+        values = {}
     if v == "git":
         url = a[0]
         if not url.startswith(("http://", "https://", "file:", "data:")):
@@ -163,6 +168,26 @@ def run_step(page, step: Step, timeout: float) -> str | None:
             if time.monotonic() >= deadline:
                 raise StepFailed(f'"{a[0]}" sayfada görünüyor, görünmemeliydi')
             time.sleep(0.2)
+    elif v == "deger":
+        box = find(page, "field", a[0], timeout)
+        deadline = time.monotonic() + timeout
+        while True:
+            actual = box.input_value(timeout=ms)
+            if actual == a[1]:
+                return actual
+            if time.monotonic() >= deadline:
+                raise StepFailed(f'"{a[0]}" değeri "{actual}", beklenen "{a[1]}"')
+            time.sleep(0.2)
+    elif v == "say":
+        loc = _explicit(page, a[0]) or page.get_by_text(a[0])
+        deadline = time.monotonic() + timeout
+        while True:
+            n = loc.count()
+            if n == a[1]:
+                return f"{n} tane"
+            if time.monotonic() >= deadline:
+                raise StepFailed(f'"{a[0]}" {n} tane, beklenen {a[1]}')
+            time.sleep(0.2)
     elif v == "adres":
         deadline = time.monotonic() + timeout
         while a[0] not in page.url:
@@ -172,67 +197,191 @@ def run_step(page, step: Step, timeout: float) -> str | None:
         return page.url
     elif v == "bekle":
         page.wait_for_timeout(a[0] * 1000)
+    elif v == "yenile":
+        page.reload(timeout=max(ms, 30000), wait_until="domcontentloaded")
+    elif v == "geri":
+        page.go_back(timeout=max(ms, 30000), wait_until="domcontentloaded")
+    elif v == "ata":
+        values[a[0]] = a[1]
+        return f"{a[0]} = {a[1]}"
+    elif v == "kaydet":
+        el = find(page, "any", a[0], timeout)
+        tag = el.evaluate("e => e.tagName").lower()
+        value = (el.input_value(timeout=ms) if tag in ("input", "textarea", "select")
+                 else el.inner_text(timeout=ms)).strip()
+        values[a[1]] = value
+        return f"{a[1]} = {value}"
     else:
         raise StepFailed(f"desteklenmeyen komut: {v}")
     return None
+
+
+MAX_INCLUDE_DEPTH = 5
+
+
+class Executor:
+    """Walks the step tree for one data row, logging as it goes.
+
+    The log is built while running -- a loop or a branch decides what comes
+    next -- so a step is listed when it starts. When one fails, what was
+    left of the blocks it was in is listed as skipped, so the reader sees
+    what did not happen.
+    """
+
+    def __init__(self, page, timeout, shots_dir, report, should_stop,
+                 values, secrets, resolve_include=None, log=None, row=None):
+        self.page, self.timeout, self.shots_dir = page, timeout, shots_dir
+        self.report, self.should_stop = report, should_stop
+        self.values, self.secrets = values, secrets
+        self.resolve_include = resolve_include
+        self.log = log if log is not None else []
+        self.row = row
+
+    def _entry(self, step: Step, depth: int, status: str) -> dict:
+        entry = {"line": step.line, "text": step.text, "status": status, "depth": depth}
+        if self.row is not None:
+            entry["row"] = self.row
+        self.log.append(entry)
+        return entry
+
+    def _shoot(self, entry: dict) -> None:
+        if not self.shots_dir:
+            return
+        index = sum(1 for x in self.log if "shot" in x)
+        try:
+            self.page.screenshot(path=os.path.join(self.shots_dir, f"{index}.png"))
+            entry["shot"] = index
+        except Exception:                               # noqa: BLE001
+            pass
+
+    def _skip(self, steps: list[Step], depth: int) -> None:
+        for s in steps:
+            self._entry(s, depth, "skipped")
+
+    def _fill(self, step: Step) -> Step:
+        args = [variables.fill(a, self.values) if isinstance(a, str) else a for a in step.args]
+        missing = [n for a in args if isinstance(a, str) for n in variables.unresolved(a)]
+        if missing:
+            raise StepFailed("tanımsız değişken: " + ", ".join(sorted(set(missing))))
+        return Step(step.line, step.text, step.verb, args)
+
+    def _finish(self, entry, began, note=None, error=None):
+        entry["ms"] = int((time.monotonic() - began) * 1000)
+        if note:
+            entry["note"] = variables.mask(str(note)[:300], self.secrets)
+        if error is not None:
+            entry["status"] = "failed"
+            entry["message"] = variables.mask(error, self.secrets)
+        elif entry["status"] == "running":
+            entry["status"] = "passed"
+
+    def block(self, steps: list[Step], depth: int = 0, includes: int = 0) -> bool:
+        """True when every step held."""
+        for i, step in enumerate(steps):
+            if self.should_stop():
+                raise Stopped()
+            rest = steps[i + 1:]
+            entry = self._entry(step, depth, "running")
+            self.report(self.log)
+            began = time.monotonic()
+
+            if step.verb == "tekrarla":
+                self._finish(entry, began, note=f"{step.args[0]} tur")
+                for n in range(1, step.args[0] + 1):
+                    self.values["tur"] = str(n)
+                    if not self.block(step.children, depth + 1, includes):
+                        self._skip(rest, depth)
+                        return False
+                continue
+
+            if step.verb in ("eger", "egeryoksa"):
+                try:
+                    target = self._fill(step).args[0]
+                except StepFailed as e:
+                    self._finish(entry, began, error=str(e))
+                    self._skip(rest, depth)
+                    return False
+                seen = self._appears(target)
+                holds = seen if step.verb == "eger" else not seen
+                self._finish(entry, began,
+                             note="görünüyor" if seen else "görünmüyor")
+                branch = step.children if holds else step.otherwise
+                if not self.block(branch, depth + 1, includes):
+                    self._skip(rest, depth)
+                    return False
+                continue
+
+            if step.verb == "kullan":
+                try:
+                    name = self._fill(step).args[0]
+                    if includes >= MAX_INCLUDE_DEPTH:
+                        raise StepFailed("Kullan çok derin (senaryolar birbirini çağırıyor olabilir)")
+                    if self.resolve_include is None:
+                        raise StepFailed("Kullan burada desteklenmiyor")
+                    sub = self.resolve_include(name)
+                except StepFailed as e:
+                    self._finish(entry, began, error=str(e))
+                    self._skip(rest, depth)
+                    return False
+                self._finish(entry, began, note=f"{len(sub)} adım")
+                if not self.block(sub, depth + 1, includes + 1):
+                    self._skip(rest, depth)
+                    return False
+                continue
+
+            note = error = None
+            try:
+                note = run_step(self.page, self._fill(step), self.timeout, self.values)
+            except StepFailed as e:
+                error = str(e)
+            except Exception as e:                      # noqa: BLE001
+                error = _plain(e)
+            self._finish(entry, began, note=note, error=error)
+            self._shoot(entry)
+            self.report(self.log)
+            if error is not None:
+                self._skip(rest, depth)
+                return False
+        return True
+
+    def _appears(self, target: str) -> bool:
+        """For Eğer: a short wait, since the thing may be on its way."""
+        deadline = time.monotonic() + min(self.timeout, 2)
+        while True:
+            if visible_text(self.page, target):
+                return True
+            loc = _explicit(self.page, target)
+            if loc is not None:
+                try:
+                    if loc.count() and loc.first.is_visible():
+                        return True
+                except Exception:                       # noqa: BLE001
+                    pass
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.2)
 
 
 def execute(page, steps: list[Step], timeout: float, shots_dir: str | None,
             report: Callable[[list[dict]], None],
             should_stop: Callable[[], bool] = lambda: False,
             values: dict[str, str] | None = None,
-            secrets: set[str] | None = None) -> str:
-    """Run the steps in order, reporting the log after each one.
-    Returns passed, failed or stopped.
+            secrets: set[str] | None = None,
+            resolve_include: Callable[[str], list[Step]] | None = None) -> str:
+    """Run one pass of the steps. Returns passed, failed or stopped.
 
-    {{NAME}} placeholders are filled from `values` just before a step runs;
-    the log keeps the step as written, and anything a secret value could
-    leak into (a message, a note) is masked."""
-    values, secrets = values or {}, secrets or set()
-    log = [{"line": s.line, "text": s.text, "status": "pending"} for s in steps]
-    report(log)
-    outcome = "passed"
-    for i, step in enumerate(steps):
-        if should_stop():
-            outcome = "stopped"
-            break
-        entry = log[i]
-        entry["status"] = "running"
-        report(log)
-        began = time.monotonic()
-        filled = Step(step.line, step.text, step.verb,
-                      [variables.fill(a, values) if isinstance(a, str) else a
-                       for a in step.args])
-        try:
-            note = run_step(page, filled, timeout)
-            entry["status"] = "passed"
-            if note:
-                entry["note"] = note[:300]
-        except StepFailed as e:
-            entry["status"] = "failed"
-            entry["message"] = str(e)
-        except Exception as e:                          # noqa: BLE001
-            entry["status"] = "failed"
-            entry["message"] = _plain(e)
-        entry["ms"] = int((time.monotonic() - began) * 1000)
-        for key in ("message", "note"):
-            if key in entry:
-                entry[key] = variables.mask(entry[key], secrets)
-        if shots_dir:
-            try:
-                page.screenshot(path=os.path.join(shots_dir, f"{i}.png"))
-                entry["shot"] = i
-            except Exception:                           # noqa: BLE001
-                pass
-        report(log)
-        if entry["status"] == "failed":
-            outcome = "failed"
-            break
-    for entry in log:
-        if entry["status"] == "pending":
-            entry["status"] = "skipped"
-    report(log)
-    return outcome
+    {{NAME}} placeholders are filled just before a step runs; the log keeps
+    the step as written, and anything a secret value could leak into (a
+    message, a note) is masked."""
+    ex = Executor(page, timeout, shots_dir, report, should_stop,
+                  dict(values or {}), secrets or set(), resolve_include)
+    try:
+        ok = ex.block(steps)
+    except Stopped:
+        report(ex.log)
+        return "stopped"
+    report(ex.log)
+    return "passed" if ok else "failed"
 
 
 def _plain(e: Exception) -> str:
@@ -250,6 +399,7 @@ def _plain(e: Exception) -> str:
 
 def main(run_id: int) -> int:
     from playwright.sync_api import sync_playwright
+    from sqlalchemy import select
 
     from ..config import get_settings
     from ..db import SessionLocal
@@ -272,10 +422,10 @@ def main(run_id: int) -> int:
         steps, errors = parse(run.steps)
         scenario = session.get(AutoScenario, run.scenario_id)
         values, secrets, broken = variables.load(session, scenario.project_id)
-        missing = sorted(variables.referenced(run.steps) - set(values))
+        rows, data_error = variables.parse_data(scenario.data)
         problems = [f"{e.line}. satır: {e.message}" for e in errors]
-        if missing:
-            problems.append("tanımsız değişken: " + ", ".join(missing))
+        if data_error:
+            problems.append(data_error)
         if broken & variables.referenced(run.steps):
             problems.append("gizli değer okunamadı, yeniden girin: "
                             + ", ".join(sorted(broken)))
@@ -285,10 +435,22 @@ def main(run_id: int) -> int:
             session.commit()
             return 1
 
+        def resolve_include(name: str) -> list[Step]:
+            other = session.scalar(select(AutoScenario).where(
+                AutoScenario.project_id == scenario.project_id, AutoScenario.name == name))
+            if other is None:
+                raise StepFailed(f'"{name}" adında bir senaryo yok')
+            sub, sub_errors = parse(other.steps)
+            if sub_errors:
+                e = sub_errors[0]
+                raise StepFailed(f'"{name}" senaryosunda hata: {e.line}. satır: {e.message}')
+            return sub
+
         shots = os.path.join(settings.storage_dir, "autotest", str(run_id))
         os.makedirs(shots, exist_ok=True)
+        log: list[dict] = []
 
-        def report(log):
+        def report(_=None):
             run.log = [dict(x) for x in log]
             session.commit()
 
@@ -296,23 +458,50 @@ def main(run_id: int) -> int:
             session.refresh(run, ["stop_requested"])
             return run.stop_requested
 
+        outcome = "passed"
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=settings.autotest_headless,
                                             slow_mo=settings.autotest_slow_mo_ms)
-                page = browser.new_page(viewport={"width": 1366, "height": 800},
-                                        locale="tr-TR")
-                outcome = execute(page, steps, settings.autotest_step_timeout_s,
-                                  shots, report, should_stop, values, secrets)
-                if not settings.autotest_headless:
-                    # leave the last screen up long enough to be seen
-                    page.wait_for_timeout(1500)
+                for n, row in enumerate(rows or [None], 1):
+                    # a clean browser per data row: no cookies or login left
+                    # over from the row before
+                    context = browser.new_context(viewport={"width": 1366, "height": 800},
+                                                  locale="tr-TR")
+                    page = context.new_page()
+                    row_values = dict(values)
+                    if row is not None:
+                        row_values.update(row)
+                        row_values["satir"] = str(n)
+                        shown = ", ".join(f"{k}={v}" for k, v in row.items())
+                        log.append({"kind": "row", "row": n, "status": "passed", "depth": 0,
+                                    "line": 0, "text": f"Veri satırı {n}: "
+                                    + (variables.mask(shown, secrets) or "")})
+                    ex = Executor(page, settings.autotest_step_timeout_s, shots, report,
+                                  should_stop, row_values, secrets, resolve_include,
+                                  log=log, row=n if row is not None else None)
+                    try:
+                        ok = ex.block(steps)
+                    except Stopped:
+                        outcome = "stopped"
+                        context.close()
+                        break
+                    if not ok:
+                        outcome = "failed"
+                        if row is not None:
+                            log[[i for i, x in enumerate(log) if x.get("kind") == "row"][-1]]["status"] = "failed"
+                    report()
+                    if not settings.autotest_headless and n == len(rows or [None]):
+                        # leave the last screen up long enough to be seen
+                        page.wait_for_timeout(1500)
+                    context.close()
                 browser.close()
             run.status = outcome
         except Exception as e:                          # noqa: BLE001
             traceback.print_exc()
             run.status = "error"
             run.message = _plain(e)
+        run.log = [dict(x) for x in log]
         run.finished_on = now()
         if run.test_id and run.status in ("passed", "failed"):
             try:
@@ -347,12 +536,18 @@ def write_result(session, run, shots_dir: str) -> None:
         run.message = "koşum arşivlendiği için sonuç teste yazılmadı"
         return
     log = run.log or []
-    failed = next((x for x in log if x.get("status") == "failed"), None)
-    passed = sum(1 for x in log if x.get("status") == "passed")
+    steps = [x for x in log if x.get("kind") != "row"]
+    rows = [x for x in log if x.get("kind") == "row"]
+    failed = next((x for x in steps if x.get("status") == "failed"), None)
+    passed = sum(1 for x in steps if x.get("status") == "passed")
     seconds = int((run.finished_on - run.started_on).total_seconds()) if run.started_on else 0
-    lines = [f"Otomasyon koşumu #{run.id}: {passed}/{len(log)} adım geçti."]
+    lines = [f"Otomasyon koşumu #{run.id}: {passed}/{len(steps)} adım geçti."]
+    if rows:
+        ok_rows = sum(1 for x in rows if x.get("status") == "passed")
+        lines.append(f"Veri seti: {ok_rows}/{len(rows)} satır geçti.")
     if failed:
-        lines.append(f"Kalan adım ({failed['line']}. satır): {failed['text']}")
+        where = f"{failed['row']}. veri satırı, " if failed.get("row") else ""
+        lines.append(f"Kalan adım ({where}{failed['line']}. satır): {failed['text']}")
         lines.append(failed.get("message") or "")
     result = Result(test_id=test.id, status_id=1 if run.status == "passed" else 5,
                     created_by=run.started_by, created_on=run.finished_on,
@@ -361,7 +556,8 @@ def write_result(session, run, shots_dir: str) -> None:
     session.add(result)
     session.flush()
     for i, x in enumerate(log):
-        session.add(ResultStep(result_id=result.id, idx=i, content=x.get("text"),
+        indent = "  " * (x.get("depth") or 0)
+        session.add(ResultStep(result_id=result.id, idx=i, content=indent + (x.get("text") or ""),
                                actual=x.get("message") or x.get("note"),
                                status_id=STEP_STATUS.get(x.get("status"), 3)))
     shot = failed if failed else (log[-1] if log else None)

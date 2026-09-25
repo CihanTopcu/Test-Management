@@ -27,6 +27,9 @@ interface StepLog {
   note?: string
   ms?: number
   shot?: number
+  depth?: number
+  row?: number
+  kind?: 'row'
 }
 
 interface RunDetail extends RunSummary {
@@ -45,6 +48,7 @@ interface Scenario {
   last_run: RunSummary | null
   case_id: number | null
   case_title: string | null
+  data: string | null
 }
 
 interface Variable {
@@ -57,7 +61,7 @@ interface Variable {
   updated_by: string | null
 }
 
-interface Config { ai: boolean; headless: boolean; commands: string[] }
+interface Config { ai: boolean; headless: boolean; commands: string[]; builtins: string[] }
 interface LineError { line: number; message: string }
 
 const LIVE = new Set(['queued', 'running'])
@@ -153,7 +157,14 @@ function RunView({ runId, onStop }: { runId: number; onStop: () => void }) {
       )}
       <ol className="steplog">
         {run.log.map((s, i) => (
-          <li key={i} className={s.status}>
+          s.kind === 'row' ? (
+            <li key={i} className={`rowhead ${s.status}`}>
+              <StepIcon status={s.status} />
+              <b className="small">{s.text}</b>
+            </li>
+          ) : (
+          <li key={i} className={s.status}
+              style={s.depth ? { paddingLeft: 4 + s.depth * 20 } : undefined}>
             <StepIcon status={s.status} />
             <div className="steplog-body">
               <code>{s.text}</code>
@@ -165,6 +176,7 @@ function RunView({ runId, onStop }: { runId: number; onStop: () => void }) {
               ? <Shot runId={run.id} index={s.shot} onOpen={() => setZoom(s)} />
               : <span className="shot-thumb empty-shot" />}
           </li>
+          )
         ))}
       </ol>
       <Dialog open={zoom != null} title={zoom ? `${zoom.line}. satır: ${zoom.text}` : ''}
@@ -193,22 +205,27 @@ function Editor({ scenario, config, projectId, varsVersion, onSaved, onDeleted }
   const [startUrl, setStartUrl] = useState('')
   const [drafting, setDrafting] = useState(!scenario)
   const [errors, setErrors] = useState<LineError[]>([])
+  const [data, setData] = useState(scenario?.data ?? '')
+  const [dataInfo, setDataInfo] = useState<{ rows: number; error: string | null }>({ rows: 0, error: null })
   const [runId, setRunId] = useState<number | null>(scenario?.last_run?.id ?? null)
   const area = useRef<HTMLTextAreaElement>(null)
   const gutter = useRef<HTMLDivElement>(null)
 
   const dirty = !scenario || name !== scenario.name || steps !== scenario.steps
     || caseId !== scenario.case_id
+    || (data || '') !== (scenario.data || '')
     || (description || '') !== (scenario.description || '')
 
   // the language is checked as it is typed, by the same parser the runner uses
   useEffect(() => {
     const t = setTimeout(() => {
-      api.post<{ errors: LineError[] }>('/api/autotest/check', { steps, project_id: projectId })
-        .then((r) => setErrors(r.errors)).catch(() => {})
+      api.post<{ errors: LineError[]; rows: number; data_error: string | null }>(
+        '/api/autotest/check', { steps, project_id: projectId, data: data || null })
+        .then((r) => { setErrors(r.errors); setDataInfo({ rows: r.rows, error: r.data_error }) })
+        .catch(() => {})
     }, 350)
     return () => clearTimeout(t)
-  }, [steps, projectId, varsVersion])
+  }, [steps, data, projectId, varsVersion])
 
   const history = useQuery({
     queryKey: ['autotest-runs', scenario?.id],
@@ -224,8 +241,8 @@ function Editor({ scenario, config, projectId, varsVersion, onSaved, onDeleted }
 
   const save = useMutation({
     mutationFn: () => scenario
-      ? api.patch<Scenario>(`/api/autotest/scenarios/${scenario.id}`, { name, steps, description: description || null, case_id: caseId })
-      : api.post<Scenario>(`/api/projects/${projectId}/autotest/scenarios`, { name, steps, description: description || null, case_id: caseId }),
+      ? api.patch<Scenario>(`/api/autotest/scenarios/${scenario.id}`, { name, steps, description: description || null, case_id: caseId, data: data || null })
+      : api.post<Scenario>(`/api/projects/${projectId}/autotest/scenarios`, { name, steps, description: description || null, case_id: caseId, data: data || null }),
     onSuccess: (s) => { refresh(); onSaved(s) },
   })
 
@@ -334,6 +351,15 @@ function Editor({ scenario, config, projectId, varsVersion, onSaved, onDeleted }
             </div>
             <textarea ref={area} value={steps} spellCheck={false} aria-label="Senaryo adımları"
                       onChange={(e) => setSteps(e.target.value)}
+                      onKeyDown={(e) => {
+                        // Tab indents inside a block instead of leaving the editor
+                        if (e.key !== 'Tab' || e.shiftKey) return
+                        e.preventDefault()
+                        const el = e.currentTarget
+                        const at = el.selectionStart
+                        setSteps(steps.slice(0, at) + '  ' + steps.slice(el.selectionEnd))
+                        requestAnimationFrame(() => el.setSelectionRange(at + 2, at + 2))
+                      }}
                       onScroll={(e) => { if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop }}
                       rows={Math.max(10, Math.min(lines + 2, 26))} />
           </div>
@@ -342,9 +368,23 @@ function Editor({ scenario, config, projectId, varsVersion, onSaved, onDeleted }
               {errors.map((e) => <li key={`${e.line}-${e.message}`}><b>{e.line}. satır:</b> {e.message}</li>)}
             </ul>
           )}
+
+          <details className="datasetbox" open={!!data}>
+            <summary className="eyebrow">
+              Veri seti {dataInfo.rows > 0 && <span className="faint">· {dataInfo.rows} satır, senaryo her satır için ayrı koşar</span>}
+            </summary>
+            <textarea value={data} onChange={(e) => setData(e.target.value)} spellCheck={false}
+                      rows={Math.max(4, Math.min(data.split('\n').length + 1, 12))}
+                      aria-label="Veri seti"
+                      placeholder={'İlk satır sütun adları, sonrakiler değerler. Excel\'den kopyalayıp yapıştırabilirsiniz.\nEPOSTA;SIFRE;BEKLENEN\nali@dgpays.com;Parola1;Hoş geldiniz\nhatali@dgpays.com;yanlis;Hatalı giriş'} />
+            {dataInfo.error
+              ? <div className="lineerrors">{dataInfo.error}</div>
+              : <div className="faint small">Sütunlar adımlarda <code>{'{{EPOSTA}}'}</code> gibi kullanılır; <code>{'{{satir}}'}</code> kaçıncı satır olduğudur.</div>}
+          </details>
         </div>
         <aside className="cheats">
           <div className="eyebrow" style={{ marginBottom: 6 }}>Komutlar</div>
+          <div className="cheatlist">
           {config?.commands.map((c) => {
             const [usage, what] = c.split(' — ')
             return (
@@ -354,6 +394,20 @@ function Editor({ scenario, config, projectId, varsVersion, onSaved, onDeleted }
               </button>
             )
           })}
+          </div>
+          <div className="eyebrow" style={{ margin: '12px 0 6px' }}>Hazır değerler</div>
+          <div className="chiprow">
+            {config?.builtins.map((b) => (
+              <button key={b} className="chip-toggle small" title="İmlecin olduğu yere ekle"
+                      onClick={() => {
+                        const el = area.current
+                        const at = el ? el.selectionEnd : steps.length
+                        setSteps(steps.slice(0, at) + `{{${b}}}` + steps.slice(at))
+                      }}>
+                {b}
+              </button>
+            ))}
+          </div>
           <div className="faint small" style={{ marginTop: 8 }}>
             Hedef, ekranda görünen yazıdır: düğme metni, alan etiketi ya da alanın içindeki ipucu.
             Başka bir şey için <code>"css:#id"</code> kullanın.

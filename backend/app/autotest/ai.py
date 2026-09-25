@@ -8,6 +8,7 @@ import httpx
 
 from ..config import get_settings
 from .dsl import help_lines, parse
+from .variables import BUILTINS
 
 API = "https://api.anthropic.com/v1/messages"
 
@@ -22,11 +23,15 @@ def enabled() -> bool:
 
 def _system() -> str:
     commands = "\n".join(f"- {line}" for line in help_lines())
+    builtins = ", ".join("{{" + b + "}}" for b in sorted(BUILTINS))
     return f"""Bir web test senaryosunu, aşağıdaki komut dilinde adımlara çeviriyorsun.
 Her satıra tek komut yaz. Yalnızca komutları yaz: açıklama, numara, kod bloğu yok.
 
 Komutlar:
 {commands}
+
+Hazır değerler (her kullanımda yeni değer üretir): {builtins}
+Bir değeri birden çok adımda kullanmak için önce Ata ile saklayın.
 
 Kurallar:
 - Hedefler çift tırnak içinde ve kullanıcının ekranda gördüğü yazıdır: düğme yazısı,

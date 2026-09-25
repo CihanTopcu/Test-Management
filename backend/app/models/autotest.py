@@ -23,6 +23,8 @@ class AutoScenario(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     steps: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # a data set: header line plus rows; the scenario runs once per row
+    data: Mapped[str | None] = mapped_column(Text)
     # the test case this automates: a run started from a test of that case
     # writes its outcome there as a result
     case_id: Mapped[int | None] = mapped_column(
