@@ -9,12 +9,14 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from ... import oidc
 from ...db import get_session
 from ...notifications import send_now
 from ...security import hash_password, verify_password
@@ -169,3 +171,71 @@ def set_password(payload: SetPasswordIn, response: Response,
         .values(expires_at=now))
     session.commit()
     return _sign_in(response, user)
+
+
+# --- single sign-on -----------------------------------------------------------
+
+@router.get("/methods")
+def sign_in_methods():
+    """What the sign-in page should offer. Public: it is asked before
+    anyone has signed in."""
+    return {"sso": oidc.enabled(),
+            "sso_label": get_settings().oidc_label if oidc.enabled() else None}
+
+
+def _back_to_app(error: str | None = None) -> RedirectResponse:
+    target = f"{get_settings().public_url.rstrip('/')}/#/sso"
+    return RedirectResponse(target + (f"?error={error}" if error else ""), status_code=302)
+
+
+@router.get("/oidc/login")
+def sso_login():
+    if not oidc.enabled():
+        raise HTTPException(404, "tek oturum acma yapilandirilmamis")
+    url, flow = oidc.start()
+    response = RedirectResponse(url, status_code=302)
+    response.set_cookie(
+        oidc.FLOW_COOKIE, flow, httponly=True, samesite="lax",
+        path="/api/auth/oidc", max_age=int(oidc.FLOW_TTL.total_seconds()),
+        secure=get_settings().public_url.startswith("https://"))
+    return response
+
+
+@router.get("/oidc/callback")
+def sso_callback(request: Request, code: str | None = None,
+                 state: str | None = None, error: str | None = None,
+                 session: Session = Depends(get_session)):
+    """Where the provider sends the browser back. Every failure lands on the
+    sign-in page with a reason, never on a JSON error page."""
+    if error:
+        return _back_to_app("denied")
+    try:
+        email = oidc.finish(code, state, request.cookies.get(oidc.FLOW_COOKIE))
+    except oidc.SSOError as exc:
+        log.warning("tek oturum acma reddedildi: %s (%s)", exc.code, exc)
+        return _back_to_app(exc.code)
+    except Exception:                         # provider unreachable, and the like
+        log.exception("tek oturum acma basarisiz")
+        return _back_to_app("provider")
+
+    user = session.scalar(select(User).where(func.lower(User.email) == email))
+    if user is None or not user.is_active:
+        log.warning("tek oturum acma: DGTest'te karsiligi olmayan hesap %s", email)
+        return _back_to_app("unknown")
+    user.last_login_at = datetime.now(timezone.utc)
+    session.commit()
+
+    response = _back_to_app()
+    response.delete_cookie(oidc.FLOW_COOKIE, path="/api/auth/oidc")
+    response.set_cookie(
+        SESSION_COOKIE, create_token(user), httponly=True, samesite="lax",
+        path="/api", max_age=get_settings().access_token_ttl_minutes * 60,
+        secure=get_settings().public_url.startswith("https://"))
+    return response
+
+
+@router.post("/session-token")
+def session_token(user: User = Depends(current_user)):
+    """The bearer token for a browser that holds only the session cookie --
+    how a single sign-on hands over without a token in the address bar."""
+    return {"access_token": create_token(user), "token_type": "bearer"}

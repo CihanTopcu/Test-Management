@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { api, getToken } from './api/client'
+import { useCallback, useEffect, useState } from 'react'
+import { api, getToken, setToken } from './api/client'
 import { useMe, useProjectStats, useProjects } from './api/hooks'
 import { Icon, type IconName } from './components/Icon'
 import { Logo } from './components/Logo'
@@ -254,12 +254,62 @@ function Shell() {
   )
 }
 
+/** Why a company-account sign-in came back without signing anyone in. */
+const SSO_ERRORS: Record<string, string> = {
+  unknown: 'Bu hesabın DGTest’te bir kullanıcısı yok ya da pasif. Yöneticinizden hesap açmasını isteyin.',
+  denied: 'Giriş, hesap sağlayıcısı tarafında iptal edildi.',
+  expired: 'Giriş yarıda kaldı ya da süresi doldu; tekrar deneyin.',
+  missing: 'Giriş yarıda kaldı ya da süresi doldu; tekrar deneyin.',
+  state: 'Giriş isteği doğrulanamadı; tekrar deneyin.',
+}
+
+/**
+ * Where the provider sends the browser back (#/sso). The server has already
+ * set the session cookie; this trades it for the bearer token the app
+ * keeps, so no token ever sits in the address bar.
+ */
+function SsoReturn({ onDone, onFail }: {
+  onDone: () => void
+  onFail: (message: string) => void
+}) {
+  useEffect(() => {
+    const cut = location.hash.indexOf('?')
+    const error = cut < 0 ? null : new URLSearchParams(location.hash.slice(cut + 1)).get('error')
+    if (error) {
+      onFail(SSO_ERRORS[error] ?? 'Kimlik doğrulanamadı; tekrar deneyin, sürerse yöneticinize bildirin.')
+      return
+    }
+    api.post<{ access_token: string }>('/api/auth/session-token', {})
+      .then((r) => { setToken(r.access_token); onDone() })
+      .catch(() => onFail('Oturum açılamadı; tekrar deneyin.'))
+  }, [onDone, onFail])
+  return (
+    <div className="signin">
+      <div className="signin-body single">
+        <div className="signin-card"><div className="skeleton" style={{ width: 180 }} /></div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(() => !!getToken())
+  const [ssoReturn, setSsoReturn] = useState(() => location.hash.startsWith('#/sso'))
+  const [ssoNotice, setSsoNotice] = useState<string | null>(null)
+  const ssoDone = useCallback(() => {
+    setSsoReturn(false); setAuthed(true); location.hash = '#/today'
+  }, [])
+  const ssoFail = useCallback((message: string) => {
+    setSsoReturn(false); setSsoNotice(message); location.hash = '#/'
+  }, [])
   // an invitation or reset link works whether or not someone is signed in
   // on this browser -- it may well be the administrator's own machine
   const [settingPassword, setSettingPassword] = useState(
     () => location.hash.startsWith('#/set-password'))
+
+  // every hook above this line: an early return before one of them changes
+  // the hook count between renders, and React blanks the page
+  if (ssoReturn) return <SsoReturn onDone={ssoDone} onFail={ssoFail} />
   if (settingPassword) {
     return <SetPassword onDone={() => {
       setSettingPassword(false)
@@ -267,6 +317,6 @@ export default function App() {
       location.hash = '#/today'
     }} />
   }
-  if (!authed) return <Login onDone={() => setAuthed(true)} />
+  if (!authed) return <Login notice={ssoNotice} onDone={() => setAuthed(true)} />
   return <Shell />
 }

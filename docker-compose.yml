@@ -58,6 +58,15 @@ services:
       # has to see the same switch the sync service obeys
       TESTRAIL_SYNC_ENABLED: ${TESTRAIL_SYNC_ENABLED:-false}
       TESTRAIL_SYNC_INTERVAL: ${TESTRAIL_SYNC_INTERVAL:-604800}
+      # Jira issue status beside the keys cases and results mention (optional)
+      JIRA_BASE_URL: ${JIRA_BASE_URL:-}
+      JIRA_EMAIL: ${JIRA_EMAIL:-}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
+      # sign-in with the company account (optional, OpenID Connect)
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_LABEL: ${OIDC_LABEL:-Microsoft}
     volumes:
       - attachments:/var/lib/testmgmt/attachments
     depends_on:

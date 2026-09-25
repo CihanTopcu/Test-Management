@@ -1519,3 +1519,16 @@ a.issue .st {
   padding-left: 5px; margin-left: 1px; border-left: 1px solid var(--border);
 }
 .issuerefs { line-height: 1.9; }
+
+/* the company-account button and the divider under it, on the sign-in card */
+a.button-link.sso {
+  background: #fff; color: #0a0f1e; border-color: #fff; font-weight: 600;
+}
+a.button-link.sso:hover { background: #e8f0ff; border-color: #e8f0ff; }
+.signin-card .or {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--text-faint);
+}
+.signin-card .or::before, .signin-card .or::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}

@@ -1,14 +1,26 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { Logo } from '../components/Logo'
 
 const VERSION = 'v0.1.0'
 
-export function Login({ onDone }: { onDone: () => void }) {
+export function Login({ onDone, notice }: {
+  onDone: () => void
+  /** why the last company-account sign-in did not go through */
+  notice?: string | null
+}) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(notice ?? '')
+  // the provider's name when single sign-on is configured, else null
+  const [sso, setSso] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.get<{ sso: boolean; sso_label: string | null }>('/api/auth/methods')
+      .then((m) => setSso(m.sso ? m.sso_label ?? 'Kurumsal hesap' : null))
+      .catch(() => setSso(null))
+  }, [])
   const [busy, setBusy] = useState(false)
   // 'forgot' asks for an address; 'sent' says what happens next
   const [mode, setMode] = useState<'login' | 'forgot' | 'sent'>('login')
@@ -107,9 +119,19 @@ export function Login({ onDone }: { onDone: () => void }) {
           <div className="eyebrow">Giriş</div>
           <h2>Hesabınıza giriş yapın</h2>
 
+          {sso && (
+            <>
+              {/* a full page navigation: the provider's sign-in is not a fetch */}
+              <a className="button-link sso" href="/api/auth/oidc/login">
+                {sso} hesabıyla giriş yap
+              </a>
+              <div className="or"><span>veya parolayla</span></div>
+            </>
+          )}
+
           <label className="field">
             <span>E-posta</span>
-            <input type="email" value={email} required autoFocus
+            <input type="email" value={email} required autoFocus={!sso}
                    autoComplete="username" placeholder="ad.soyad@dgpays.com"
                    onChange={(e) => setEmail(e.target.value)} />
           </label>

@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     jira_email: str = ""
     jira_api_token: str = ""
 
+    # single sign-on (OpenID Connect); for Entra ID the issuer is
+    # https://login.microsoftonline.com/<tenant id>/v2.0
+    oidc_issuer: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_label: str = "Microsoft"
+
     # mail is optional: with no host configured everything still lands in the
     # in-app notification list
     smtp_host: str = ""

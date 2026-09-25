@@ -142,6 +142,38 @@ Taşınacak bir şey kalmadığında hiçbir şey yapmaz.
 
 ---
 
+## Kurumsal hesapla giriş (Microsoft Entra ID)
+
+İsteğe bağlıdır; ayarlanmazsa yalnızca parolayla giriş vardır.
+
+1. Entra ID yönetim merkezinde **App registrations → New registration**:
+   - Ad: `DGTest`
+   - Desteklenen hesaplar: *Yalnızca bu kuruluş dizinindeki hesaplar*
+   - Redirect URI: platform **Web**, adres
+     `https://dgtest.dgpays.com/api/auth/oidc/callback`
+     (`PUBLIC_URL` + `/api/auth/oidc/callback`, birebir aynı olmalı)
+2. **Certificates & secrets → New client secret**; değeri hemen kopyalayın.
+3. **API permissions**: Microsoft Graph altında *openid*, *email*,
+   *profile* (delegated). Başka izin gerekmez.
+4. `.env`:
+
+   ```
+   OIDC_ISSUER=https://login.microsoftonline.com/<Directory (tenant) ID>/v2.0
+   OIDC_CLIENT_ID=<Application (client) ID>
+   OIDC_CLIENT_SECRET=<client secret değeri>
+   ```
+
+5. `docker compose up -d` — giriş ekranında “Microsoft hesabıyla giriş
+   yap” düğmesi belirir.
+
+Microsoft hesabı DGTest'teki kullanıcıya **e-posta adresiyle** eşlenir.
+DGTest'te karşılığı olmayan ya da pasif bir hesap giremez; dizinde olmak
+tek başına yetmez. Birini içeri almak için önce Yönetim → Kullanıcılar'dan
+hesabını açın. Client secret'ın süresi dolduğunda (Entra varsayılanı 6–24
+ay) yenisi `.env`'e yazılmalıdır.
+
+---
+
 ## 5. E-posta bildirimleri
 
 `.env` içinde `SMTP_HOST` boşken uygulama sorunsuz çalışır: bildirimler
