@@ -1,4 +1,5 @@
 from .attachments import Attachment
+from .autotest import AutoRun, AutoScenario
 from .base import Base
 from .cases import (Case, CaseHistory, CaseLabel, CaseStep, Label, Section,
                     SharedStep, Suite)
@@ -14,7 +15,7 @@ from .workspace import (AuditEntry, Notification,
                         SavedFilter, SyncRun)
 
 __all__ = [
-    "ApiToken", "Attachment", "AuditEntry", "Base", "Case", "CaseHistory", "CaseLabel", "CaseStep",
+    "ApiToken", "Attachment", "AutoRun", "AutoScenario", "AuditEntry", "Base", "Case", "CaseHistory", "CaseLabel", "CaseStep",
     "CaseType", "Config", "ConfigGroup", "CustomField", "CustomFieldOption",
     "Group", "GroupMember", "Label", "Milestone", "Plan", "PlanEntry",
     "PasswordToken", "Priority", "Project", "ProjectGroup", "ProjectMember", "Result", "ResultStep", "Role",

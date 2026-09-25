@@ -62,6 +62,9 @@ services:
       JIRA_BASE_URL: ${JIRA_BASE_URL:-}
       JIRA_EMAIL: ${JIRA_EMAIL:-}
       JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
+      # browser scenarios: no screen in a container, so always headless
+      AUTOTEST_HEADLESS: "true"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # sign-in with the company account (optional, OpenID Connect)
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}

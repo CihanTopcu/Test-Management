@@ -17,7 +17,7 @@ import { useCallback, useEffect, useState } from 'react'
  */
 export type Page = 'overview' | 'todo' | 'suites' | 'cases' | 'runs'
   | 'plans' | 'milestones' | 'shared' | 'reports' | 'admin' | 'dashboard'
-  | 'settings' | 'today'
+  | 'settings' | 'today' | 'autotest'
 
 export interface Route {
   page: Page
@@ -29,6 +29,8 @@ export interface Route {
   test?: number
   plan?: number
   milestone?: number
+  /** a browser scenario on the test automation screen */
+  scenario?: number
   /** Trailing ?key=value pairs. Report charts drill in through these, and
    *  because they live in the address the filtered list is pasteable like
    *  every other screen here. */
@@ -37,7 +39,7 @@ export interface Route {
 
 const PAGES: Page[] = ['overview', 'todo', 'suites', 'cases', 'runs',
                        'plans', 'milestones', 'shared', 'reports', 'admin',
-                       'dashboard', 'settings', 'today']
+                       'dashboard', 'settings', 'today', 'autotest']
 
 function parse(): Route {
   const raw = location.hash.replace(/^#\/?/, '')
@@ -64,6 +66,7 @@ function parse(): Route {
     else if (route.page === 'runs') route.run = id
     else if (route.page === 'plans') route.plan = id
     else if (route.page === 'milestones') route.milestone = id
+    else if (route.page === 'autotest') route.scenario = id
     i += 1
   }
   // trailing key/value pairs: /sec/300, /t/9236740
@@ -98,6 +101,8 @@ export function href(route: Route): string {
     parts.push(String(route.plan))
   } else if (route.page === 'milestones' && route.milestone) {
     parts.push(String(route.milestone))
+  } else if (route.page === 'autotest' && route.scenario) {
+    parts.push(String(route.scenario))
   }
   const query = new URLSearchParams(route.filters ?? {}).toString()
   return '#/' + parts.join('/') + (query ? `?${query}` : '')

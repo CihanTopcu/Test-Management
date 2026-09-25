@@ -10,7 +10,7 @@ from . import bootstrap
 from .config import get_settings
 from . import ratelimit
 from .ratelimit import RateLimitMiddleware
-from .api.routers import (admin, attachments, auth, automation, cases,
+from .api.routers import (admin, attachments, auth, automation, autotest, cases,
                           catalog, importer, jira, overview, plans, reports,
                           runs, search, workspace)
 
@@ -51,7 +51,7 @@ app.add_middleware(
 
 for module in (auth, catalog, overview, cases, runs, plans, reports,
                admin, automation, search, workspace, attachments, importer,
-               jira):
+               jira, autotest):
     app.include_router(module.router)
 
 

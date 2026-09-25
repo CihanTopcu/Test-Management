@@ -20,6 +20,7 @@ import { Runs } from './pages/Runs'
 import { Settings } from './pages/Settings'
 import { SetPassword } from './pages/SetPassword'
 import { SharedSteps } from './pages/SharedSteps'
+import { Autotest } from './pages/Autotest'
 import { SuiteView } from './pages/SuiteView'
 import { Today } from './pages/Today'
 import { Suites } from './pages/Suites'
@@ -42,6 +43,7 @@ const NAV: { page: Page; label: string; icon: IconName }[] = [
   { page: 'milestones', label: 'Milestone’lar', icon: 'flag' },
   { page: 'shared', label: 'Paylaşılan Adımlar', icon: 'file' },
   { page: 'reports', label: 'Raporlar', icon: 'chart' },
+  { page: 'autotest', label: 'Test Otomasyonu', icon: 'sparkle' },
 ]
 
 /** Screens about the whole workspace rather than one project: no rail, and
@@ -185,6 +187,7 @@ function Shell() {
       case 'shared': return <SharedSteps route={route} projectName={projectName} />
       case 'todo': return <Todo />
       case 'reports': return <Reports route={route} projectName={projectName} />
+      case 'autotest': return <Autotest route={route} projectName={projectName} />
     }
   }
 

@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     oidc_client_secret: str = ""
     oidc_label: str = "Microsoft"
 
+    # browser scenarios (app/autotest). Headed by default: on a tester's own
+    # machine the point is to watch it happen; a server sets this to true.
+    autotest_headless: bool = False
+    # a pause after each browser action, so a watching person can follow
+    autotest_slow_mo_ms: int = 250
+    autotest_step_timeout_s: float = 10
+    # drafting commands from free text; off without a key
+    anthropic_api_key: str = ""
+    autotest_ai_model: str = "claude-opus-5-5"
+
     # mail is optional: with no host configured everything still lands in the
     # in-app notification list
     smtp_host: str = ""
