@@ -379,6 +379,8 @@ export interface Test {
   title: string
   status_id: number | null
   assignedto_id: number | null
+  /** the case's section; tests arrive in section-tree order */
+  section_id?: number | null
 }
 
 export interface StepResult {

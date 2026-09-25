@@ -145,6 +145,20 @@ export function useBulkStatus(runId?: number | null) {
   })
 }
 
+/** Hand a selection of tests to someone (null takes it away). */
+export function useBulkAssign(runId?: number | null) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { test_ids: number[]; assignedto_id: number | null }) =>
+      api.post<{ updated: number }>(`/api/runs/${runId}/bulk-assign`, body),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['tests', runId] })
+      client.invalidateQueries({ queryKey: ['todo'] })
+      client.invalidateQueries({ queryKey: ['today'] })
+    },
+  })
+}
+
 export const useCase = (caseId?: number | null) =>
   useQuery({
     queryKey: ['case', caseId],

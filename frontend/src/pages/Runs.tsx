@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  useBulkStatus, useCases, useCatalog, useDeleteRun, useProjectStats,
+  useBulkAssign, useBulkStatus, useCases, useCatalog, useDeleteRun, useProjectStats,
   useRunMembership, useRunPages, useRunSummary, useRuns, useSections, useTests, useUsers,
 } from '../api/hooks'
+import type { SectionNode } from '../api/types'
 import { AddRunDialog } from '../components/AddDialogs'
 import { Confirm } from '../components/Confirm'
 import { Dialog } from '../components/Dialog'
 import { RunGrid } from '../components/RunGrid'
 import { Icon } from '../components/Icon'
-import { Donut, Legend, MiniBar, slices } from '../components/Status'
+import { MiniBar, slices } from '../components/Status'
 import { TestPanel } from '../components/TestPanel'
 import { href, type Route } from '../route'
 import { Crumbs } from '../components/Crumbs'
@@ -204,10 +205,25 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
         : tests[0].id))
   }, [tests])
   const bulkStatus = useBulkStatus(route.run)
+  const bulkAssign = useBulkAssign(route.run)
   const removeRun = useDeleteRun(route.project)
   const membership = useRunMembership(route.run)
 
   const run = runs.find((r) => r.id === route.run)
+  const { data: sectionTree = [] } = useSections(run?.suite_id ?? undefined)
+  // "Parent › Child" per section, for the grid's group headings
+  const sectionNames = useMemo(() => {
+    const names = new Map<number, string>()
+    const walk = (nodes: SectionNode[], trail: string[]) => {
+      for (const n of nodes) {
+        const path = [...trail, n.name]
+        names.set(n.id, path.join(' › '))
+        walk(n.children, path)
+      }
+    }
+    walk(sectionTree, [])
+    return names
+  }, [sectionTree])
   const data = slices(catalog, summary?.by_status ?? {})
   const total = summary?.total ?? 0
   const passed = summary?.by_status['1'] ?? 0
@@ -277,8 +293,18 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
                       onAdd={() => membership.add.mutate([...addPicked], {
                         onSuccess: () => setAdding(false) })} />
 
+      {/* One strip instead of a progress bar plus a donut panel: the donut
+          said the same thing a second time and pushed the grid -- where the
+          work happens -- 300px down the page. Every status is a filter. */}
       {total > 0 && (
-        <div className="runprogress">
+        <div className="runsummary">
+          <div className="headline">
+            <span className="pct">%{pct}</span>
+            <span className="muted">geçti</span>
+            <span className="faint">
+              {(total - untested).toLocaleString('tr-TR')} / {total.toLocaleString('tr-TR')} sonuçlandı
+            </span>
+          </div>
           <div className="track">
             {bar.map((st) => (
               <span key={st.id} title={`${st.label}: ${st.count}`}
@@ -286,31 +312,24 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
                              background: st.color ?? 'var(--text-dim)' }} />
             ))}
           </div>
-          <b>{(total - untested).toLocaleString('tr-TR')}</b>
-          <span className="faint">/ {total.toLocaleString('tr-TR')} sonuçlandı</span>
-          <span className="right"><b>%{pct}</b> <span className="faint">passed</span></span>
-        </div>
-      )}
-
-      {total > 0 && (
-        <div className="panel" style={{ padding: 16, marginBottom: 12 }}>
-          <div className="donut-wrap">
-            <Donut data={data} size={140} />
-            <div className="pass-big">
-              <div className="n">{pct}%</div>
-              <div className="k">geçti</div>
-              <div className="k">
-                {(total - untested).toLocaleString('tr-TR')} / {total.toLocaleString('tr-TR')} sonuçlandı
-              </div>
-            </div>
-            <div style={{ flex: 1, minWidth: 260 }}>
-              <Legend data={data} total={total} active={filter}
-                      onPick={(id) => {
-                        setFilter(filter === id ? null : id)
-                        setPage(0)
-                        setPicked(new Set())
-                      }} />
-            </div>
+          <div className="statuschips">
+            {data.map((st) => {
+              const on = st.id != null && filter === st.id
+              return (
+                <button key={st.id ?? 'untested'} className={`statuschip ${on ? 'on' : ''}`}
+                        disabled={st.id == null}
+                        title={st.id == null ? undefined : on ? 'Filtreyi kaldır' : `Yalnızca ${st.label}`}
+                        style={{ '--c': st.color } as React.CSSProperties}
+                        onClick={() => {
+                          if (st.id == null) return
+                          setFilter(on ? null : st.id)
+                          setPage(0)
+                          setPicked(new Set())
+                        }}>
+                  <i />{st.label}<b>{st.count.toLocaleString('tr-TR')}</b>
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -357,6 +376,7 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
       <div className="split">
         <div className="list">
           <RunGrid tests={shown} catalog={catalog} users={users}
+                   sectionNames={sectionNames}
                    runId={route.run} archived={Boolean(run?.is_archived)}
                    focusedId={focused} onFocus={setFocused}
                    onOpen={select} picked={picked} onPick={setPicked}
@@ -376,6 +396,22 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
                   {st.label}
                 </button>
               ))}
+              <span className="faint small">ata:</span>
+              <select style={{ width: 'auto', maxWidth: 190 }} value=""
+                      disabled={bulkAssign.isPending}
+                      onChange={(e) => {
+                        if (e.target.value === '') return
+                        bulkAssign.mutate({
+                          test_ids: [...picked],
+                          assignedto_id: e.target.value === 'none' ? null : Number(e.target.value),
+                        }, { onSuccess: () => setPicked(new Set()) })
+                      }}>
+                <option value="">— kişi seçin —</option>
+                <option value="none">Atamayı kaldır</option>
+                {users.filter((u) => u.is_active).map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
               {!run?.is_archived && (
                 <button className="ghost danger"
                         disabled={membership.remove.isPending}

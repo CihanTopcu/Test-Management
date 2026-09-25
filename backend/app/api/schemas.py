@@ -204,6 +204,8 @@ class TestOut(ORMModel):
     title: str
     status_id: int | None = None
     assignedto_id: int | None = None
+    # the case's section, so the grid can head each group the way TestRail does
+    section_id: int | None = None
 
 
 class ResultOut(ORMModel):

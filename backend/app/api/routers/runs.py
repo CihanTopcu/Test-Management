@@ -2,14 +2,16 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import array as pg_array
 from sqlalchemy.orm import Session, selectinload
 
 from ...audit import record
 from ...db import get_session
 from ...notifications import notify
 from ...models import (Attachment, Case, CaseStep, Result, ResultStep, Run,
-                       Status, Test, User)
+                       Section, Status, Test, User)
 from ..deps import current_user
 from ..permissions import (WRITE_RESULTS, WRITE_RUNS, assert_can, assert_read,
                            assert_read_of)
@@ -356,10 +358,80 @@ def list_tests(run_id: int,
 
     total = session.scalar(
         select(func.count()).select_from(Test).where(*where)) or 0
-    items = session.scalars(
-        select(Test).where(*where).order_by(Test.id)
-        .offset(offset).limit(limit)).all()
+
+    # In the order of the suite's section tree, then the case order within a
+    # section -- the order the cases were written in and the order TestRail
+    # shows a run. By test id, a run read as its cases' creation dates, with
+    # "Login" tests scattered among "Satış ekranı" ones. The ordering stays
+    # in SQL so paging a 10,062-test run still works.
+    run = session.get(Run, run_id)
+    tree = _section_order(session, run.suite_id) if run and run.suite_id else []
+    query = (select(Test, Case.section_id)
+             .outerjoin(Case, Case.id == Test.case_id)
+             .where(*where))
+    if tree:
+        query = query.order_by(
+            func.array_position(pg_array(tree), Case.section_id).nulls_last(),
+            Case.display_order, Test.id)
+    else:
+        query = query.order_by(Test.id)
+    rows = session.execute(query.offset(offset).limit(limit)).all()
+    items = [TestOut.model_validate(test).model_copy(update={"section_id": section_id})
+             for test, section_id in rows]
     return TestPage(total=total, offset=offset, limit=limit, items=items)
+
+
+def _section_order(session: Session, suite_id: int) -> list[int]:
+    """The suite's section ids, depth first, siblings by display order."""
+    children: dict[int | None, list[tuple[int, int]]] = {}
+    for sid, parent, order in session.execute(
+            select(Section.id, Section.parent_id, Section.display_order)
+            .where(Section.suite_id == suite_id)):
+        children.setdefault(parent, []).append((order or 0, sid))
+    out: list[int] = []
+    stack = sorted(children.get(None, []), reverse=True)
+    while stack:
+        _, sid = stack.pop()
+        out.append(sid)
+        stack.extend(sorted(children.get(sid, []), reverse=True))
+    return out
+
+
+class BulkAssign(BaseModel):
+    test_ids: list[int] = Field(min_length=1)
+    # null takes the assignment away
+    assignedto_id: int | None = None
+
+
+@router.post("/runs/{run_id}/bulk-assign")
+def bulk_assign(run_id: int, payload: BulkAssign,
+                session: Session = Depends(get_session),
+                user: User = Depends(current_user)):
+    """Hand a selection of tests to someone -- the other half of splitting a
+    run between testers, next to marking them. One notification per
+    assignee rather than one per test: forty e-mails for forty tests is
+    how people learn to filter the sender."""
+    run = session.get(Run, run_id)
+    if run is None:
+        raise HTTPException(404, "kosum bulunamadi")
+    assert_can(session, user, WRITE_RESULTS, run.project_id)
+    if payload.assignedto_id is not None:
+        assignee = session.get(User, payload.assignedto_id)
+        if assignee is None or not assignee.is_active:
+            raise HTTPException(400, "atanacak kullanici bulunamadi ya da pasif")
+    tests = session.scalars(
+        select(Test).where(Test.run_id == run_id,
+                           Test.id.in_(payload.test_ids))).all()
+    changed = [t for t in tests if t.assignedto_id != payload.assignedto_id]
+    for test in changed:
+        test.assignedto_id = payload.assignedto_id
+    if changed and payload.assignedto_id not in (None, user.id):
+        notify(session, payload.assignedto_id, "test_assigned",
+               f"Size {len(changed)} test atandı: {run.name[:60]}",
+               f"{user.name}, '{run.name}' koşumunda {len(changed)} testi size atadı.",
+               link=f"/#/p/{run.project_id}/runs/{run.id}")
+    session.commit()
+    return {"updated": len(changed)}
 
 
 def _render_result(session: Session, result: Result) -> ResultOut:

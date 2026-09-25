@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useAddResult } from '../api/hooks'
 import type { Catalog, Test, User } from '../api/types'
 import { Icon } from '../components/Icon'
@@ -29,9 +29,11 @@ function shortcutStatuses(catalog?: Catalog) {
 
 export function RunGrid({
   tests, catalog, users, runId, archived, focusedId, onFocus, onOpen,
-  picked, onPick, emptyLabel,
+  picked, onPick, emptyLabel, sectionNames,
 }: {
   tests: Test[]
+  /** section id -> "Parent › Child"; a heading is drawn where it changes */
+  sectionNames?: Map<number, string>
   catalog?: Catalog
   users: User[]
   runId?: number | null
@@ -135,7 +137,13 @@ export function RunGrid({
           </tr>
         </thead>
         <tbody ref={body}>
-          {tests.map((t) => {
+          {tests.map((t, i) => {
+            // tests arrive in section-tree order, so a heading wherever the
+            // section changes is the TestRail grouping without a second query
+            const section = t.section_id ?? null
+            const heading = sectionNames && section != null
+              && (i === 0 || (tests[i - 1].section_id ?? null) !== section)
+              ? sectionNames.get(section) ?? `Bölüm ${section}` : null
             const done = t.status_id === 1
             const untested = t.status_id == null || t.status_id === 3
             // Anything that is neither passed nor untested gets a wash in
@@ -144,7 +152,18 @@ export function RunGrid({
             // a deferred test had broken.
             const marked = !done && !untested
             return (
-              <tr key={t.id} data-test={t.id}
+              <Fragment key={t.id}>
+              {heading && (
+                <tr className="sec-row">
+                  <td colSpan={6}>
+                    {heading.includes(' › ') && (
+                      <span className="path">{heading.slice(0, heading.lastIndexOf(' › '))} › </span>
+                    )}
+                    <b>{heading.split(' › ').pop()}</b>
+                  </td>
+                </tr>
+              )}
+              <tr data-test={t.id}
                   style={marked
                     ? { '--row': statusColor(catalog, t.status_id) } as React.CSSProperties
                     : undefined}
@@ -179,10 +198,11 @@ export function RunGrid({
                     </button>
                   ))}
                 </td>
-                <td className="small muted">
+                <td className="small muted assignee">
                   {users.find((u) => u.id === t.assignedto_id)?.name ?? '—'}
                 </td>
               </tr>
+              </Fragment>
             )
           })}
           {!tests.length && (

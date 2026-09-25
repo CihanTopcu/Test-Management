@@ -1195,21 +1195,48 @@ kbd {
 .gridhint .err { color: var(--danger); margin-left: auto; font-weight: 600; }
 .gridhint kbd { min-width: 18px; padding: 0 5px; font-size: 10.5px; }
 
-/* where this run stands, above everything else */
-.runprogress {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px; margin-bottom: 12px;
+/* where this run stands, above everything else: the pass rate, the bar,
+   and every status as a filter -- one strip, so the grid starts high up */
+.runsummary {
+  display: grid; grid-template-columns: auto minmax(160px, 1fr);
+  align-items: center; gap: 10px 18px;
+  padding: 14px 16px; margin-bottom: 12px;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow-xs);
-  font-size: 13px;
 }
-.runprogress .track {
-  flex: 1; display: flex; height: 8px; min-width: 120px;
-  border-radius: var(--radius-pill); overflow: hidden;
-  background: var(--untested);
+.runsummary .headline { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+.runsummary .pct {
+  font-family: var(--display); font-size: 26px; font-weight: 700;
+  letter-spacing: -0.04em; line-height: 1;
 }
-.runprogress .track > span { display: block; transition: width .4s var(--ease); }
-.runprogress .right { margin-left: 4px; }
+.runsummary .track {
+  display: flex; height: 8px; border-radius: var(--radius-pill);
+  overflow: hidden; background: var(--untested);
+}
+.runsummary .track > span { display: block; transition: width .4s var(--ease); }
+.statuschips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+button.statuschip {
+  padding: 4px 11px; font-size: 12.5px; gap: 7px;
+  background: transparent; box-shadow: none; border-color: var(--border);
+}
+button.statuschip i {
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+  background: var(--c, var(--text-faint));
+}
+button.statuschip b { font-weight: 600; }
+button.statuschip.on {
+  border-color: var(--c, var(--accent));
+  background: color-mix(in srgb, var(--c, var(--accent)) 16%, transparent);
+}
+button.statuschip:disabled { opacity: 1; cursor: default; }
+
+/* a section heading inside the run grid */
+.rungrid tr.sec-row td {
+  background: var(--surface-2); padding: 7px 14px; font-size: 12.5px;
+  border-bottom: 1px solid var(--border); cursor: default;
+}
+.rungrid tr.sec-row .path { color: var(--text-faint); }
+.rungrid tr.sec-row:hover { background: none; }
 
 /* ---- case explorer ------------------------------------------------------
    The project-wide filtered case library: where every report drills into. */
@@ -1357,3 +1384,28 @@ tr.muted-row td:last-child { opacity: 1; }
   align-items: start;
 }
 @media (max-width: 900px) { .user-dialog { grid-template-columns: minmax(0, 1fr); } }
+
+/* The run grid on a phone: a card per test, the verdict buttons always
+   showing (there is no hover to reveal them), nothing to scroll sideways.
+   Testers do record results on a device in one hand. */
+@media (max-width: 760px) {
+  .panel.rungrid > table, .panel.rungrid table.grid { min-width: 0; }
+  .rungrid thead { display: none; }
+  .rungrid tbody tr:not(.sec-row) {
+    display: grid; grid-template-columns: 30px minmax(0, 1fr) auto;
+    grid-template-areas: "pick title title" "pick status assignee" "pick quick quick";
+    gap: 4px 8px; padding: 10px 12px; border-bottom: 1px solid var(--border);
+  }
+  .rungrid tbody tr:not(.sec-row) td { padding: 0; border: none; }
+  .rungrid tbody tr:not(.sec-row) td:nth-child(1) { grid-area: pick; padding-top: 2px; }
+  .rungrid tbody tr:not(.sec-row) td.cid { display: none; }
+  .rungrid tbody tr:not(.sec-row) td.title { grid-area: title; }
+  .rungrid tbody tr:not(.sec-row) td:nth-child(4) { grid-area: status; }
+  .rungrid tbody tr:not(.sec-row) td.quickset { grid-area: quick; opacity: 1; }
+  .rungrid tbody tr:not(.sec-row) td.assignee { grid-area: assignee; text-align: right; }
+  .rungrid .qs { width: 34px; height: 30px; }
+  .rungrid tbody tr.focused { box-shadow: inset 3px 0 0 var(--accent); }
+  .gridhint { display: none; }
+  .bulkbar { flex-wrap: wrap; }
+  .runsummary { grid-template-columns: minmax(0, 1fr); }
+}
