@@ -639,7 +639,13 @@ tbody tr:hover td.title { color: var(--accent); }
 }
 
 /* ---------- tabs ---------- */
-.subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.subtabs {
+  display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px;
+  /* one line that scrolls, rather than wrapping and cutting a tab in half */
+  overflow-x: auto; scrollbar-width: none;
+}
+.subtabs::-webkit-scrollbar { display: none; }
+.subtabs button { white-space: nowrap; flex: none; }
 .subtabs button {
   border: none; background: none; border-radius: 0; box-shadow: none;
   color: var(--text-dim); border-bottom: 2px solid transparent;
@@ -1477,4 +1483,16 @@ tr.muted-row td:last-child { opacity: 1; }
 @media (max-width: 760px) {
   .msrow { grid-template-columns: minmax(0, 1fr) auto; }
   .msrow .bar { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* Names like turkcellTest_entPaycell_bkmTest_8.1.7_2312211511_release run
+   to eighty characters without a space; they break anywhere rather than
+   push a column off the edge. */
+td.title { overflow-wrap: anywhere; }
+
+/* Tables that are really lists fit a phone instead of scrolling sideways:
+   they drop their secondary columns (counts, bars) and keep name and figure. */
+@media (max-width: 760px) {
+  .panel table.fit, .panel > table.fit { min-width: 0; table-layout: auto; }
+  .hide-narrow { display: none; }
 }

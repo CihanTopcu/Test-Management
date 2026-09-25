@@ -260,7 +260,7 @@ export function MilestoneView({ route, projectName }: {
         <>
           <div className="section-rule">Alt milestone’lar ({children.length})</div>
           <div className="panel">
-            <table>
+            <table className="fit">
               <tbody>
                 {children.map((child) => {
                   const childRuns = runs.filter((r) => r.milestone_id === child.id)
@@ -281,7 +281,7 @@ export function MilestoneView({ route, projectName }: {
                       <td className="small muted" style={{ width: 140 }}>
                         {fmtDate(child.due_on) ?? 'tarih yok'}
                       </td>
-                      <td style={{ width: 160 }}>
+                      <td className="hide-narrow" style={{ width: 160 }}>
                         {agg.test_count > 0 && <MiniBar run={agg} catalog={catalog} />}
                       </td>
                     </tr>

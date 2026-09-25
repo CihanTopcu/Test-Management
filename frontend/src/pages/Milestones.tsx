@@ -70,7 +70,7 @@ export function Milestones({ route, projectName }: { route: Route; projectName: 
       <>
         <div className="section-rule">{title} ({rows.length})</div>
         <div className="panel">
-          <table>
+          <table className="fit">
             <tbody>
               {rows.map(({ m, depth, kids }) => {
                 const mine = runsByMilestone.get(m.id) ?? []
@@ -84,7 +84,7 @@ export function Milestones({ route, projectName }: { route: Route; projectName: 
                                            project: route.project,
                                            milestone: m.id })
                   }}>
-                    <td style={{ paddingLeft: 10 + depth * 24 }}>
+                    <td className="title" style={{ paddingLeft: 10 + depth * 24 }}>
                       <Icon name="flag" size={14} className="faint" />{' '}
                       <b>{m.name}</b>
                       <div className="small faint" style={{ marginLeft: 24 }}>
@@ -95,13 +95,13 @@ export function Milestones({ route, projectName }: { route: Route; projectName: 
                           : ' · aktif koşum yok'}
                       </div>
                     </td>
-                    <td style={{ width: 150 }}>
+                    <td className="hide-narrow" style={{ width: 150 }}>
                       {agg.test_count > 0 && <MiniBar run={agg} catalog={catalog} />}
                     </td>
                     <td className="nowrap" style={{ width: 56, textAlign: 'right' }}>
                       {pct === null ? <span className="faint">—</span> : <b>{pct}%</b>}
                     </td>
-                    <td style={{ width: 90 }} className="small muted">
+                    <td style={{ width: 90 }} className="small muted hide-narrow">
                       detay <Icon name="chevron-right" size={12} />
                     </td>
                   </tr>

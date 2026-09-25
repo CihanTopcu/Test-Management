@@ -336,13 +336,13 @@ export function Plans({ route, projectName }: { route: Route; projectName: strin
         </div>
       ) : (
         <div className="panel">
-          <table>
+          <table className="fit">
             <thead>
               <tr>
                 <th>Plan</th>
-                <th style={{ width: 90 }}>Satır</th>
-                <th style={{ width: 100 }}>Test</th>
-                <th style={{ width: 150 }}>İlerleme</th>
+                <th className="hide-narrow" style={{ width: 90 }}>Satır</th>
+                <th className="hide-narrow" style={{ width: 100 }}>Test</th>
+                <th className="hide-narrow" style={{ width: 150 }}>İlerleme</th>
                 <th style={{ width: 60 }}></th>
               </tr>
             </thead>
@@ -359,9 +359,9 @@ export function Plans({ route, projectName }: { route: Route; projectName: strin
                     </span>}
                     {p.description && <div className="small faint">{p.description}</div>}
                   </td>
-                  <td className="small muted">{p.entry_count}</td>
-                  <td className="small muted">{p.test_count.toLocaleString('tr-TR')}</td>
-                  <td><MiniBar run={p} catalog={catalog} /></td>
+                  <td className="small muted hide-narrow">{p.entry_count}</td>
+                  <td className="small muted hide-narrow">{p.test_count.toLocaleString('tr-TR')}</td>
+                  <td className="hide-narrow"><MiniBar run={p} catalog={catalog} /></td>
                   <td className="nowrap" style={{ textAlign: 'right' }}>
                     <b>{pct(p.passed_count, p.test_count)}%</b>
                   </td>
