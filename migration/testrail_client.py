@@ -90,8 +90,11 @@ class TestRail:
                 self.throttled += 1
                 time.sleep(float(r.headers.get("Retry-After", 10)))
                 continue
-            # TestRail briefly 401s after a burst of failed auth; back off
-            if r.status_code in (401, 409, 500, 502, 503) and attempt < retries - 1:
+            # TestRail briefly 401s after a burst of failed auth; back off.
+            # 504 is the gateway giving up on a slow query -- it cost sync #4
+            # its whole pass on a single get_cases page -- and is as
+            # transient as the 502/503 beside it.
+            if r.status_code in (401, 409, 500, 502, 503, 504) and attempt < retries - 1:
                 time.sleep(delay)
                 delay *= 2
                 continue

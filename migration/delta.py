@@ -199,9 +199,11 @@ def load_delta(manifest: dict | None = None) -> dict:
     from sqlalchemy.orm import Session as _Session
 
     with _Session(engine) as session:
-        loader.load_catalog(session)
+        # access is administered here now: the sync may add a new account or
+        # membership, but it no longer overwrites or deletes one
+        loader.load_catalog(session, initial=False)
         loader.load_custom_fields(session)
-        loader.load_projects(session)
+        loader.load_projects(session, initial=False)
         loader.load_milestones(session)
         structure = loader.load_structure(
             session, only_suites=set(manifest.get("suites") or []))

@@ -74,6 +74,32 @@ def read(rel, default=None):
         return json.load(f)
 
 
+def insert_missing(session, model, rows, index_elements=("id",)):
+    """Insert rows that are not there yet; never touch the ones that are.
+
+    For access data during the cut-over sync. Roles, users, memberships are
+    administered in this application from day one; a weekly pass that
+    upserted them from TestRail silently undid every change made here --
+    a deactivated account came back, a role's permissions went blank.
+    """
+    if not rows:
+        return 0
+    table = model.__table__
+    cols = {c.name for c in table.columns}
+    total = 0
+    for i in range(0, len(rows), CHUNK):
+        chunk = [{k: v for k, v in r.items() if k in cols} for r in rows[i:i + CHUNK]]
+        # RETURNING, because psycopg reports -1 as the rowcount of a
+        # multi-row insert and the log line should say what really went in
+        result = session.execute(
+            insert(table).values(chunk)
+            .on_conflict_do_nothing(index_elements=list(index_elements))
+            .returning(table.c[index_elements[0]]))
+        total += len(result.all())
+    session.commit()
+    return total
+
+
 def upsert(session, model, rows, index_elements=("id",)):
     """Insert rows, updating any that already exist."""
     if not rows:
@@ -129,9 +155,11 @@ def runs_on_disk(pid):
 
 # --- phase 1: vocabularies and people --------------------------------------
 
-def load_catalog(session):
+def load_catalog(session, initial: bool = True):
+    """initial=False is the cut-over sync: access data only gains rows."""
     log("== katalog ==")
-    n = upsert(session, models.Role, [
+    put = upsert if initial else insert_missing
+    n = put(session, models.Role, [
         {"id": r["id"], "testrail_id": r["id"], "name": r["name"],
          "is_default": r.get("is_default", False),
          "is_project_default": r.get("is_project_default", False),
@@ -139,7 +167,7 @@ def load_catalog(session):
         for r in read("meta/roles.json")])
     log(f"  roles            {n}")
 
-    n = upsert(session, models.User, [
+    n = put(session, models.User, [
         {"id": u["id"], "testrail_id": u["id"], "email": u["email"],
          "name": u["name"], "is_active": u.get("is_active", True),
          "role_id": u.get("role_id")}
@@ -147,16 +175,19 @@ def load_catalog(session):
     log(f"  users            {n}")
 
     groups = read("meta/groups.json")
-    n = upsert(session, models.Group, [
+    n = put(session, models.Group, [
         {"id": g["id"], "testrail_id": g["id"], "name": g["name"]}
         for g in groups])
     log(f"  groups           {n}")
     members = [{"group_id": g["id"], "user_id": uid}
                for g in groups for uid in g.get("user_ids", [])]
-    if members:
+    if members and initial:
         session.execute(text("DELETE FROM group_members"))
         session.execute(models.GroupMember.__table__.insert(), members)
         session.commit()
+    elif members:
+        insert_missing(session, models.GroupMember, members,
+                       index_elements=("group_id", "user_id"))
     log(f"  group_members    {len(members)}")
 
     n = upsert(session, models.CaseType, [
@@ -232,7 +263,9 @@ def load_custom_fields(session):
         log(f"  field_options    {len(uniq)}")
 
 
-def load_projects(session):
+def load_projects(session, initial: bool = True):
+    """initial=False is the cut-over sync: project data is refreshed, but
+    who may do what in a project is only ever added to, never replaced."""
     log("== projeler ==")
     projects = read("meta/projects.json")
     n = upsert(session, models.Project, [
@@ -250,11 +283,32 @@ def load_projects(session):
                 "role_id": u.get("project_role_id")}
                for p in projects for u in p.get("users", [])
                if u["user_id"] in known]
-    if members:
-        session.execute(text("DELETE FROM project_members"))
-        session.execute(models.ProjectMember.__table__.insert(), members)
+    # TestRail's per-project group access; it was never loaded, so two
+    # grants to the Automation-Zero group had simply disappeared
+    known_groups = {g["id"] for g in read("meta/groups.json")}
+    group_access = [{"project_id": p["id"], "group_id": g["id"],
+                     "role_id": g["role_id"]}
+                    for p in projects for g in (p.get("groups") or [])
+                    if g["id"] in known_groups and g.get("role_id")]
+    if initial:
+        if members:
+            session.execute(text("DELETE FROM project_members"))
+            session.execute(models.ProjectMember.__table__.insert(), members)
+        session.execute(text("DELETE FROM project_groups"))
+        if group_access:
+            session.execute(models.ProjectGroup.__table__.insert(), group_access)
+        for p in projects:
+            session.execute(
+                text("UPDATE projects SET default_role_id = :r WHERE id = :id"),
+                {"r": p.get("default_role_id"), "id": p["id"]})
         session.commit()
+    else:
+        insert_missing(session, models.ProjectMember, members,
+                       index_elements=("project_id", "user_id"))
+        insert_missing(session, models.ProjectGroup, group_access,
+                       index_elements=("project_id", "group_id"))
     log(f"  project_members  {len(members)}")
+    log(f"  project_groups   {len(group_access)}")
 
     # templates are returned per project but are instance-wide objects
     tpl = {}
