@@ -14,6 +14,7 @@ import { TestPanel } from '../components/TestPanel'
 import { href, type Route } from '../route'
 import { Crumbs } from '../components/Crumbs'
 import { MoreMenu } from '../components/MoreMenu'
+import { RunAutomation } from '../components/RunAutomation'
 
 /** Run index: grouped by day, the way TestRail lists them. */
 function RunList({ route, projectName }: { route: Route; projectName: string }) {
@@ -260,6 +261,7 @@ function RunView({ route, projectName }: { route: Route; projectName: string }) 
         )}
         {!run?.is_archived && (
           <div className="right row" style={{ gap: 6 }}>
+            {route.run && <RunAutomation runId={route.run} archived={!!run?.is_archived} />}
             <button onClick={() => { setAddPicked(new Set()); setAdding(true) }}>
               <Icon name="plus" size={13} /> Case ekle
             </button>

@@ -262,6 +262,11 @@ def main(run_id: int) -> int:
         run = session.get(AutoRun, run_id)
         if run is None or run.status != "queued":
             return 1
+        if run.stop_requested:
+            # stopped while it waited its turn in a batch
+            run.status, run.finished_on = "stopped", now()
+            session.commit()
+            return 0
         run.status, run.started_on = "running", now()
         session.commit()
         steps, errors = parse(run.steps)
@@ -382,4 +387,7 @@ def write_result(session, run, shots_dir: str) -> None:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(int(sys.argv[1])))
+    # several ids: a batch from a run, one browser at a time, in order
+    for arg in sys.argv[1:]:
+        main(int(arg))
+    raise SystemExit(0)

@@ -32,14 +32,17 @@ BACKEND = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
 _procs: dict[int, subprocess.Popen] = {}
 
 
-def launch(run_id: int) -> None:
-    """Start the runner. Replaced in the tests, which have no browser."""
+def launch(*run_ids: int) -> None:
+    """Start the runner for one run, or several in order in one process.
+    Replaced in the tests, which have no browser."""
     env = dict(os.environ)
     env["PYTHONPATH"] = BACKEND + os.pathsep + env.get("PYTHONPATH", "")
     env.setdefault("PYTHONIOENCODING", "utf-8")
-    _procs[run_id] = subprocess.Popen(
-        [sys.executable, "-m", "app.autotest.runner", str(run_id)],
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.autotest.runner", *map(str, run_ids)],
         cwd=os.getcwd(), env=env)
+    for run_id in run_ids:
+        _procs[run_id] = proc
 
 
 def _now():
@@ -423,3 +426,113 @@ def delete_variable(variable_id: int, user: User = Depends(current_user),
     v = _variable(session, user, variable_id)
     session.delete(v)
     session.commit()
+
+
+# --- a whole run's automated tests ---------------------------------------------
+
+def _automatable(session: Session, run_id: int) -> list[tuple[Test, AutoScenario]]:
+    """The tests of a run whose case has a scenario; the first by name when a
+    case has several."""
+    rows = session.execute(
+        select(Test, AutoScenario)
+        .join(AutoScenario, AutoScenario.case_id == Test.case_id)
+        .where(Test.run_id == run_id)
+        .order_by(Test.id, AutoScenario.name, AutoScenario.id)).all()
+    seen, out = set(), []
+    for test, scenario in rows:
+        if test.id not in seen:
+            seen.add(test.id)
+            out.append((test, scenario))
+    return out
+
+
+def _owner_run(session: Session, user: User, run_id: int) -> Run:
+    run = session.get(Run, run_id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "bulunamadi")
+    assert_read(session, user, run.project_id)
+    return run
+
+
+@router.get("/runs/{run_id}/autotest")
+def run_automation(run_id: int, user: User = Depends(current_user),
+                   session: Session = Depends(get_session)):
+    """What of this run is automated, and how its latest automated pass went."""
+    _owner_run(session, user, run_id)
+    pairs = _automatable(session, run_id)
+    latest = {}
+    if pairs:
+        last_ids = select(func.max(AutoRun.id)).where(
+            AutoRun.test_id.in_([t.id for t, _ in pairs])).group_by(AutoRun.test_id)
+        latest = {r.test_id: r for r in session.scalars(
+            select(AutoRun).where(AutoRun.id.in_(last_ids)))}
+    items = []
+    for test, scenario in pairs:
+        last = latest.get(test.id)
+        items.append({"test_id": test.id, "title": test.title,
+                      "scenario_id": scenario.id, "scenario": scenario.name,
+                      "last": _run_out(session, last, full=False) if last else None})
+    count = {k: sum(1 for i in items if i["last"] and i["last"]["status"] == k)
+             for k in ("queued", "running", "passed", "failed", "error", "stopped")}
+    return {"total": len(items), "live": count["queued"] + count["running"],
+            "counts": count, "items": items}
+
+
+class BatchIn(BaseModel):
+    # a subset; all automated tests of the run when left out
+    test_ids: list[int] | None = None
+
+
+@router.post("/runs/{run_id}/autotest", status_code=201)
+def run_automation_start(run_id: int, body: BatchIn | None = None,
+                         user: User = Depends(current_user),
+                         session: Session = Depends(get_session)):
+    owner = _owner_run(session, user, run_id)
+    assert_can(session, user, WRITE_RESULTS, owner.project_id)
+    if owner.is_archived:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "arşivlenmiş koşuma sonuç eklenemez")
+    wanted = set(body.test_ids) if body and body.test_ids else None
+    pairs = [(t, s) for t, s in _automatable(session, run_id)
+             if wanted is None or t.id in wanted]
+    busy = set(session.scalars(select(AutoRun.test_id).where(
+        AutoRun.test_id.in_([t.id for t, _ in pairs] or [0]),
+        AutoRun.status.in_(("queued", "running")))))
+    started, skipped = [], []
+    for test, scenario in pairs:
+        if test.id in busy:
+            skipped.append({"test_id": test.id, "reason": "zaten koşuyor"})
+            continue
+        _, errors = parse(scenario.steps)
+        if errors:
+            skipped.append({"test_id": test.id,
+                            "reason": f"{scenario.name}: {errors[0].line}. satır: {errors[0].message}"})
+            continue
+        run = AutoRun(scenario_id=scenario.id, status="queued", steps=scenario.steps,
+                      log=[], test_id=test.id, started_by=user.id, created_on=_now())
+        session.add(run)
+        started.append(run)
+    session.commit()
+    if started:
+        try:
+            launch(*[r.id for r in started])
+        except OSError as e:
+            for r in started:
+                r.status, r.message, r.finished_on = "error", f"başlatılamadı: {e}", _now()
+            session.commit()
+    return {"started": len(started), "skipped": skipped}
+
+
+@router.post("/runs/{run_id}/autotest/stop")
+def run_automation_stop(run_id: int, user: User = Depends(current_user),
+                        session: Session = Depends(get_session)):
+    owner = _owner_run(session, user, run_id)
+    assert_can(session, user, WRITE_RESULTS, owner.project_id)
+    live = session.scalars(select(AutoRun).join(Test, Test.id == AutoRun.test_id).where(
+        Test.run_id == run_id, AutoRun.status.in_(("queued", "running")))).all()
+    for r in live:
+        r.stop_requested = True
+        if r.status == "queued":
+            # the batch skips it when its turn comes
+            r.status, r.finished_on = "stopped", _now()
+    session.commit()
+    return {"stopped": len(live)}

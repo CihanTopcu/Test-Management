@@ -94,7 +94,8 @@ def browser(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "autotest_slow_mo_ms", 0)
     monkeypatch.setattr(settings, "autotest_step_timeout_s", 2)
     monkeypatch.setattr(settings, "storage_dir", str(tmp_path))
-    monkeypatch.setattr(autotest, "launch", runner.main)     # synchronous
+    # synchronous, one after another like the real batch process
+    monkeypatch.setattr(autotest, "launch", lambda *ids: [runner.main(i) for i in ids])
 
     page = tmp_path / "giris.html"
     page.write_text(PAGE, encoding="utf-8")
@@ -192,3 +193,58 @@ def test_a_run_started_from_a_test_writes_its_result(app_client, admin, project,
     assert len(mine["attachments"]) == 1
     fresh = app_client.get(f"/api/tests/{test['id']}", headers=admin).json()
     assert fresh["status_id"] == 5
+
+
+def _run_with_cases(app_client, admin, project, suite, make_case, browser):
+    """Three cases, two automated (one passes, one fails), in a new run."""
+    good, bad, manual = (make_case("Otomatik geçen"), make_case("Otomatik kalan"),
+                         make_case("Elle yapılan"))
+    base = f"/api/projects/{project['id']}/autotest/scenarios"
+    app_client.post(base, headers=admin, json={
+        "name": "Geçen", "case_id": good["id"],
+        "steps": f'Git {browser}' + chr(10) + 'Gör "Giriş Yap"'})
+    app_client.post(base, headers=admin, json={
+        "name": "Kalan", "case_id": bad["id"],
+        "steps": f'Git {browser}' + chr(10) + 'Gör "Yok böyle bir şey"'})
+    kosum = app_client.post(f"/api/projects/{project['id']}/runs", headers=admin, json={
+        "suite_id": suite["id"], "name": "Toplu otomasyon", "include_all": True}).json()
+    tests = app_client.get(f"/api/runs/{kosum['id']}/tests", headers=admin).json()["items"]
+    by_case = {t["case_id"]: t for t in tests}
+    return kosum, by_case[good["id"]], by_case[bad["id"]], by_case[manual["id"]]
+
+
+def test_a_run_automates_its_linked_tests_in_one_go(app_client, admin, project, suite,
+                                                     make_case, browser):
+    kosum, good, bad, manual = _run_with_cases(app_client, admin, project, suite,
+                                               make_case, browser)
+    before = app_client.get(f"/api/runs/{kosum['id']}/autotest", headers=admin).json()
+    assert before["total"] == 2
+    assert {i["test_id"] for i in before["items"]} == {good["id"], bad["id"]}
+
+    started = app_client.post(f"/api/runs/{kosum['id']}/autotest", headers=admin).json()
+    assert started["started"] == 2
+
+    after = app_client.get(f"/api/runs/{kosum['id']}/autotest", headers=admin).json()
+    assert after["live"] == 0 and after["counts"]["passed"] == 1 and after["counts"]["failed"] == 1
+    status = {t["id"]: t["status_id"] for t in app_client.get(
+        f"/api/runs/{kosum['id']}/tests", headers=admin).json()["items"]}
+    assert status[good["id"]] == 1 and status[bad["id"]] == 5
+    assert status[manual["id"]] in (None, 3)                  # left alone
+
+
+def test_a_waiting_batch_can_be_stopped(app_client, admin, project, suite, make_case,
+                                        browser, monkeypatch):
+    from app.api.routers import autotest
+    queued = []
+    monkeypatch.setattr(autotest, "launch", lambda *ids: queued.extend(ids))
+    kosum, *_ = _run_with_cases(app_client, admin, project, suite, make_case, browser)
+    app_client.post(f"/api/runs/{kosum['id']}/autotest", headers=admin)
+    assert len(queued) == 2
+    # a second press while they wait does not queue them twice
+    assert app_client.post(f"/api/runs/{kosum['id']}/autotest",
+                           headers=admin).json()["started"] == 0
+
+    assert app_client.post(f"/api/runs/{kosum['id']}/autotest/stop",
+                           headers=admin).json()["stopped"] == 2
+    state = app_client.get(f"/api/runs/{kosum['id']}/autotest", headers=admin).json()
+    assert state["live"] == 0 and state["counts"]["stopped"] == 2
