@@ -158,7 +158,8 @@ class SyncRun(Base):
         DateTime(timezone=True), nullable=False)
     finished_on: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True))
-    # running | ok | failed
+    # queued (asked for from the admin page, not yet picked up) | running |
+    # ok | failed | cancelled
     status: Mapped[str] = mapped_column(String(10), nullable=False,
                                         default="running")
     # the moment this run asked TestRail to report changes from

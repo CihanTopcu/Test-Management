@@ -321,6 +321,12 @@ def audit_log(action: str | None = None,
     }
 
 
+# A manual request that nothing has picked up in this long is reported as
+# such: the sync service is probably not running, and a "queued" that sits
+# there forever looks exactly like one that is about to start.
+QUEUE_PATIENCE = timedelta(minutes=2)
+
+
 @router.get("/sync")
 def sync_status(session: Session = Depends(get_session),
                 _: User = Depends(require_admin)):
@@ -351,10 +357,20 @@ def sync_status(session: Session = Depends(get_session),
         elapsed = (now - finished).total_seconds()
         overdue = elapsed > interval * 2
 
+    # a manual request the sync service has not picked up in a while
+    stalled = False
+    queued = next((r for r in runs if r.status == "queued"), None)
+    if queued is not None:
+        asked = queued.started_on
+        if asked.tzinfo is None:
+            asked = asked.replace(tzinfo=timezone.utc)
+        stalled = now - asked > QUEUE_PATIENCE
+
     return {
         "enabled": enabled,
         "interval_hours": round(interval / 3600),
         "overdue": overdue,
+        "stalled": stalled,
         "last_ok": last_ok.finished_on if last_ok else None,
         "runs": [{
             "id": r.id,
@@ -367,3 +383,58 @@ def sync_status(session: Session = Depends(get_session),
             "error": r.error,
         } for r in runs],
     }
+
+
+@router.post("/sync", status_code=status.HTTP_202_ACCEPTED)
+def request_sync(request: Request, session: Session = Depends(get_session),
+                 admin: User = Depends(require_admin)):
+    """Ask for a sync now instead of at the next scheduled pass.
+
+    The API does not run the sync itself: that lives in the separate sync
+    service, which carries the TestRail client and can take many minutes.
+    This only writes a queued row; the service polls for one between its
+    scheduled passes and takes it, so the one-at-a-time rule and the
+    window-only-moves-on-success rule stay in one place (migration/sync.py).
+    """
+    if os.environ.get("TESTRAIL_SYNC_ENABLED", "false").lower() in (
+            "0", "false", "no", "off", ""):
+        # the sync service skips every pass while switched off, so a queued
+        # request would never be taken
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "TestRail esitlemesi kapali (TESTRAIL_SYNC_ENABLED)")
+
+    busy = session.scalar(
+        select(SyncRun).where(SyncRun.status.in_(("queued", "running")))
+        .order_by(SyncRun.started_on.desc()).limit(1))
+    if busy is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "zaten sirada ya da calisan bir esitleme var")
+
+    run = SyncRun(started_on=datetime.now(timezone.utc), status="queued",
+                  trigger="manual", counts={})
+    session.add(run)
+    session.flush()
+    record(session, admin, "create", "sync", run.id,
+           label="TestRail esitlemesi istendi", request=request)
+    session.commit()
+    return {"id": run.id, "status": run.status}
+
+
+@router.delete("/sync/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_sync(run_id: int, request: Request,
+                session: Session = Depends(get_session),
+                admin: User = Depends(require_admin)):
+    """Withdraw a request that has not started. A running pass is left alone:
+    stopping it half-way would leave a partly loaded window."""
+    run = session.get(SyncRun, run_id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "esitleme bulunamadi")
+    if run.status != "queued":
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "yalnizca siradaki bir istek iptal edilebilir")
+    run.status = "cancelled"
+    run.finished_on = datetime.now(timezone.utc)
+    record(session, admin, "delete", "sync", run.id,
+           label="TestRail esitlemesi iptal edildi", request=request)
+    session.commit()

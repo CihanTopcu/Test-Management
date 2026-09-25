@@ -54,6 +54,10 @@ services:
       SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
       BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:-admin@dgpays.com}
       BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-}
+      # the admin page reports the sync schedule and offers "sync now"; it
+      # has to see the same switch the sync service obeys
+      TESTRAIL_SYNC_ENABLED: ${TESTRAIL_SYNC_ENABLED:-false}
+      TESTRAIL_SYNC_INTERVAL: ${TESTRAIL_SYNC_INTERVAL:-604800}
     volumes:
       - attachments:/var/lib/testmgmt/attachments
     depends_on:

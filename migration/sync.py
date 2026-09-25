@@ -10,6 +10,11 @@ else needs unpicking.
     python migration/sync.py --loop       # keep going, one pass per interval
     python migration/sync.py --status     # what the last runs did
 
+The admin page can also ask for a pass now ("Şimdi eşitle"). It writes a
+queued row and nothing else; the loop below checks for one every
+TESTRAIL_SYNC_POLL seconds (default 30) while it waits out the interval,
+and a one-off run takes a waiting request too.
+
 Three things it is careful about, all of them learned the hard way:
 
   The window only moves forward on success. A failed run leaves it where it
@@ -104,8 +109,24 @@ def window_start(session: Session) -> datetime:
     return finished - OVERLAP
 
 
+def poll_seconds() -> int:
+    return int(os.environ.get("TESTRAIL_SYNC_POLL", 30))
+
+
+def queued_request(session: Session) -> SyncRun | None:
+    """The oldest pass someone asked for from the admin page."""
+    return session.scalar(
+        select(SyncRun).where(SyncRun.status == "queued")
+        .order_by(SyncRun.started_on.asc()).limit(1))
+
+
 def claim(session: Session, trigger: str) -> SyncRun | None:
-    """Start a run, unless one is already in flight."""
+    """Start a run, unless one is already in flight.
+
+    A request queued from the admin page is taken over rather than a new row
+    written beside it, so the history shows one manual run where somebody
+    pressed the button, not a queued row that never went anywhere.
+    """
     now = datetime.now(timezone.utc)
     running = session.scalar(
         select(SyncRun).where(SyncRun.status == "running")
@@ -122,9 +143,16 @@ def claim(session: Session, trigger: str) -> SyncRun | None:
         running.error = "yarim kaldi (konteyner yeniden baslatilmis olabilir)"
         running.finished_on = now
 
-    run = SyncRun(started_on=now, status="running", trigger=trigger,
-                  window_from=window_start(session))
-    session.add(run)
+    run = queued_request(session)
+    if run is not None:
+        log(f"yonetim sayfasindan istenen esitleme (#{run.id}) basliyor")
+        run.status = "running"
+        run.started_on = now
+        run.window_from = window_start(session)
+    else:
+        run = SyncRun(started_on=now, status="running", trigger=trigger,
+                      window_from=window_start(session))
+        session.add(run)
     session.commit()
     session.refresh(run)
     return run
@@ -137,7 +165,7 @@ def tell_admins(session: Session, subject: str, body: str) -> None:
         .where(Role.name == "Admin", User.is_active.is_(True))).all()
     for admin in admins:
         notify(session, admin.id, "digest", subject, body,
-               link="/#/p/1/admin")
+               link="/#/admin")
     session.commit()
 
 
@@ -220,6 +248,26 @@ def show_status() -> int:
     return 0
 
 
+def wait_for_next(every: int) -> None:
+    """Sleep until the next scheduled pass, or until someone asks for one.
+
+    The interval is a week, so a plain sleep would make the admin page's
+    button wait up to seven days. Waking every few seconds to look for a
+    queued row costs one indexed query.
+    """
+    deadline = time.time() + every
+    engine = engine_for()
+    while time.time() < deadline:
+        time.sleep(min(poll_seconds(), max(0.0, deadline - time.time())))
+        try:
+            with Session(engine) as session:
+                if queued_request(session) is not None:
+                    return
+        except Exception:                              # noqa: BLE001
+            # the database being briefly away is not a reason to stop waiting
+            traceback.print_exc()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--loop", action="store_true",
@@ -247,7 +295,7 @@ def main() -> int:
         except Exception:                              # noqa: BLE001
             # a crash here must not stop the schedule; the next pass retries
             traceback.print_exc()
-        time.sleep(every)
+        wait_for_next(every)
 
 
 if __name__ == "__main__":
