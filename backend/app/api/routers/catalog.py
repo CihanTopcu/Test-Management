@@ -37,6 +37,8 @@ class ProjectIn(BaseModel):
     announcement: str | None = None
     show_announcement: bool = False
     suite_mode: int = 3
+    # chosen up front, so a confidential project is never open for a moment
+    default_role_id: int | None = None
 
 
 class ProjectPatch(BaseModel):
@@ -62,6 +64,8 @@ def create_project(payload: ProjectIn, session: Session = Depends(get_session),
     if session.scalar(select(Project).where(Project.name == payload.name)):
         raise HTTPException(400, "bu isimde bir proje zaten var")
 
+    if payload.default_role_id is not None and session.get(Role, payload.default_role_id) is None:
+        raise HTTPException(400, "rol bulunamadi")
     project = Project(**payload.model_dump())
     session.add(project)
     session.flush()

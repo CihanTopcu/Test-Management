@@ -17,10 +17,11 @@ from sqlalchemy.orm import Session
 from ...audit import record
 from ...db import get_session
 from ...models import (AuditEntry, CaseType, CustomField, CustomFieldOption,
-                       Priority, Project, Role, Status, SyncRun, User)
+                       Group, GroupMember, Priority, Project, ProjectGroup,
+                       ProjectMember, Role, Status, SyncRun, User)
 from ...security import hash_password
 from ..deps import current_user
-from ..permissions import ADMIN, capabilities, default_for
+from ..permissions import ADMIN, READ, _resolve, capabilities, default_for
 from ..permissions import ALL as ALL_CAPABILITIES
 from ..schemas import (CustomFieldCreate, CustomFieldOut, CustomFieldUpdate,
                        UserAdminOut, UserCreate, UserUpdate)
@@ -96,6 +97,153 @@ def update_user(user_id: int, payload: UserUpdate, request: Request,
     item = UserAdminOut.model_validate(user)
     item.has_password = bool(user.password_hash)
     return item
+
+
+# --- who may do what, per user ---------------------------------------------
+
+SOURCE_LABELS = {
+    "admin": "yönetici", "member": "proje üyeliği", "group": "grup",
+    "default": "projenin varsayılan erişimi", "global": "global rol",
+}
+
+
+@router.get("/users/{user_id}/access")
+def user_access(user_id: int, session: Session = Depends(get_session),
+                _: User = Depends(require_admin)):
+    """Every project, the role this person holds there, and why.
+
+    The question an administrator actually has -- "what can Ayşe do in
+    TRANSIT?" -- had no screen: memberships could only be read one project
+    at a time, and nothing showed what the global role, a group or the
+    project default added up to. This reads the same resolution the
+    checks use, so the answer cannot drift from what is enforced.
+    """
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "kullanici bulunamadi")
+    roles = {r.id: r.name for r in session.scalars(select(Role))}
+    member_roles = dict(session.execute(
+        select(ProjectMember.project_id, ProjectMember.role_id)
+        .where(ProjectMember.user_id == user_id)).all())
+    my_groups = {gid: name for gid, name in session.execute(
+        select(Group.id, Group.name)
+        .join(GroupMember, GroupMember.group_id == Group.id)
+        .where(GroupMember.user_id == user_id))}
+    group_grants: dict[int, list[str]] = {}
+    for pid, gid in session.execute(
+            select(ProjectGroup.project_id, ProjectGroup.group_id)
+            .where(ProjectGroup.group_id.in_(list(my_groups) or [-1]))):
+        group_grants.setdefault(pid, []).append(my_groups[gid])
+
+    out = []
+    for project in session.scalars(select(Project).order_by(Project.name)):
+        caps, source, role_ids = _resolve(session, user, project.id)
+        out.append({
+            "project_id": project.id,
+            "name": project.name,
+            "is_completed": project.is_completed,
+            "can_read": READ in caps,
+            "capabilities": sorted(caps),
+            "roles": [roles.get(r, f"#{r}") for r in role_ids],
+            "source": source,
+            "source_label": SOURCE_LABELS[source],
+            # what an admin can change on this row directly
+            "member_role_id": member_roles.get(project.id),
+            "groups": sorted(group_grants.get(project.id, [])),
+        })
+    return {"user_id": user_id, "global_role_id": user.role_id,
+            "groups": sorted(my_groups.values()), "projects": out}
+
+
+# --- groups -----------------------------------------------------------------
+
+class GroupIn(BaseModel):
+    name: str | None = None
+    user_ids: list[int] | None = None
+
+
+def _group_out(session: Session, group: Group) -> dict:
+    return {
+        "id": group.id, "name": group.name,
+        "user_ids": sorted(session.scalars(
+            select(GroupMember.user_id).where(GroupMember.group_id == group.id))),
+        "projects": [{"project_id": pid, "role_id": rid} for pid, rid in session.execute(
+            select(ProjectGroup.project_id, ProjectGroup.role_id)
+            .where(ProjectGroup.group_id == group.id))],
+    }
+
+
+def _set_members(session: Session, group: Group, user_ids: list[int]) -> None:
+    wanted = set(user_ids)
+    current = {m.user_id: m for m in session.scalars(
+        select(GroupMember).where(GroupMember.group_id == group.id))}
+    for uid, row in current.items():
+        if uid not in wanted:
+            session.delete(row)
+    for uid in wanted - set(current):
+        if session.get(User, uid) is None:
+            raise HTTPException(400, f"kullanici bulunamadi: {uid}")
+        session.add(GroupMember(group_id=group.id, user_id=uid))
+
+
+@router.get("/groups")
+def list_groups(session: Session = Depends(get_session),
+                _: User = Depends(require_admin)):
+    return [_group_out(session, g)
+            for g in session.scalars(select(Group).order_by(Group.name))]
+
+
+@router.post("/groups", status_code=201)
+def create_group(payload: GroupIn, request: Request,
+                 session: Session = Depends(get_session),
+                 admin: User = Depends(require_admin)):
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(400, "grup adi gerekli")
+    if session.scalar(select(Group).where(func.lower(Group.name) == name.lower())):
+        raise HTTPException(400, "bu isimde bir grup zaten var")
+    group = Group(name=name)
+    session.add(group)
+    session.flush()
+    _set_members(session, group, payload.user_ids or [])
+    record(session, admin, "create", "group", group.id, label=name, request=request,
+           detail={"user_ids": payload.user_ids or []})
+    session.commit()
+    return _group_out(session, group)
+
+
+@router.patch("/groups/{group_id}")
+def update_group(group_id: int, payload: GroupIn, request: Request,
+                 session: Session = Depends(get_session),
+                 admin: User = Depends(require_admin)):
+    group = session.get(Group, group_id)
+    if group is None:
+        raise HTTPException(404, "grup bulunamadi")
+    before = _group_out(session, group)
+    if payload.name is not None and payload.name.strip():
+        group.name = payload.name.strip()
+    if payload.user_ids is not None:
+        _set_members(session, group, payload.user_ids)
+    record(session, admin, "update", "group", group.id, label=group.name,
+           request=request,
+           detail={"before": before["user_ids"], "after": payload.user_ids})
+    session.commit()
+    return _group_out(session, group)
+
+
+@router.delete("/groups/{group_id}", status_code=204)
+def delete_group(group_id: int, request: Request,
+                 session: Session = Depends(get_session),
+                 admin: User = Depends(require_admin)):
+    """Its memberships and project grants go with it (ON DELETE CASCADE),
+    which is what deleting a group means -- so the log keeps what it held."""
+    group = session.get(Group, group_id)
+    if group is None:
+        raise HTTPException(404, "grup bulunamadi")
+    record(session, admin, "delete", "group", group.id, label=group.name,
+           request=request, detail=_group_out(session, group))
+    session.delete(group)
+    session.commit()
 
 
 @router.get("/roles")

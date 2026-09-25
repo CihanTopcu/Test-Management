@@ -1,15 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
-  ActivityByUserOut, ActivityItem, AdminSummary, Attachment, AuditPage,
-  AutomationBacklog,
-  CasePage, Catalog, Coverage, CustomField, DashboardOut, DefectReport,
-  DigestPreview, Distribution, DuplicateGroup, FlakyCase, HistoryEntry,
-  Milestone, NeverRunCase, NotificationPreference, Project, ProjectMember,
-  ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode,
-  SeriesPoint, SubscriptionList, Suite, SyncStatusOut, Test, TestCase,
-  CaseExplorerPage,
-  TestDetail, TestPage, TodayOut, TodoItem, User, UserAdmin,
+  ActivityByUserOut, ActivityItem, AdminSummary, Attachment, AuditPage, AutomationBacklog, CaseExplorerPage, CasePage, Catalog, Coverage, CustomField, DashboardOut, DefectReport, DigestPreview, Distribution, DuplicateGroup, FlakyCase, GroupAdmin, HistoryEntry, Milestone, NeverRunCase, NotificationPreference, Project, ProjectGroupAccess, ProjectMember, ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode, SeriesPoint, SubscriptionList, Suite, SyncStatusOut, Test, TestCase, TestDetail, TestPage, TodayOut, TodoItem, User, UserAccess, UserAdmin,
 } from './types'
 
 /** Lookup tables change about twice a year; keep them for the session. */
@@ -719,12 +711,22 @@ export const useMembers = (projectId?: number) =>
     enabled: !!projectId,
   })
 
+/** Anything that changes who may see what: the lists built on access, and
+ *  the per-user explanation on the admin page, all have to be refetched. */
+function invalidateAccess(client: ReturnType<typeof useQueryClient>, projectId?: number) {
+  client.invalidateQueries({ queryKey: ['members', projectId] })
+  client.invalidateQueries({ queryKey: ['project-groups', projectId] })
+  client.invalidateQueries({ queryKey: ['user-access'] })
+  client.invalidateQueries({ queryKey: ['admin-groups'] })
+  client.invalidateQueries({ queryKey: ['projects'] })
+}
+
 export function useSaveMember(projectId?: number) {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (body: { user_id: number; role_id: number }) =>
       api.put(`/api/projects/${projectId}/members`, body),
-    onSuccess: () => client.invalidateQueries({ queryKey: ['members', projectId] }),
+    onSuccess: () => invalidateAccess(client, projectId),
   })
 }
 
@@ -733,7 +735,74 @@ export function useRemoveMember(projectId?: number) {
   return useMutation({
     mutationFn: (userId: number) =>
       api.del(`/api/projects/${projectId}/members/${userId}`),
-    onSuccess: () => client.invalidateQueries({ queryKey: ['members', projectId] }),
+    onSuccess: () => invalidateAccess(client, projectId),
+  })
+}
+
+export const useProjectGroups = (projectId?: number) =>
+  useQuery({
+    queryKey: ['project-groups', projectId],
+    queryFn: () => api.get<ProjectGroupAccess[]>(`/api/projects/${projectId}/groups`),
+    enabled: !!projectId,
+  })
+
+export function useSaveProjectGroup(projectId?: number) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { group_id: number; role_id: number }) =>
+      api.put(`/api/projects/${projectId}/groups`, body),
+    onSuccess: () => invalidateAccess(client, projectId),
+  })
+}
+
+export function useRemoveProjectGroup(projectId?: number) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (groupId: number) =>
+      api.del(`/api/projects/${projectId}/groups/${groupId}`),
+    onSuccess: () => invalidateAccess(client, projectId),
+  })
+}
+
+/** Set a project's default access; null = everyone on their global role. */
+export function useSetDefaultAccess(projectId?: number) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (roleId: number | null) =>
+      api.patch<Project>(`/api/projects/${projectId}`, { default_role_id: roleId }),
+    onSuccess: () => invalidateAccess(client, projectId),
+  })
+}
+
+export const useUserAccess = (userId?: number | null) =>
+  useQuery({
+    queryKey: ['user-access', userId],
+    queryFn: () => api.get<UserAccess>(`/api/admin/users/${userId}/access`),
+    enabled: !!userId,
+  })
+
+export const useAdminGroups = () =>
+  useQuery({
+    queryKey: ['admin-groups'],
+    queryFn: () => api.get<GroupAdmin[]>('/api/admin/groups'),
+    retry: false,
+  })
+
+export function useSaveGroup() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, body }: { id?: number; body: { name?: string; user_ids?: number[] } }) =>
+      id ? api.patch<GroupAdmin>(`/api/admin/groups/${id}`, body)
+         : api.post<GroupAdmin>('/api/admin/groups', body),
+    onSuccess: () => invalidateAccess(client),
+  })
+}
+
+export function useDeleteGroup() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/admin/groups/${id}`),
+    onSuccess: () => invalidateAccess(client),
   })
 }
 
@@ -895,6 +964,8 @@ export function useSaveUser() {
       client.invalidateQueries({ queryKey: ['admin-users'] })
       client.invalidateQueries({ queryKey: ['admin-summary'] })
       client.invalidateQueries({ queryKey: ['users'] })
+      // a new global role changes every project where nothing overrides it
+      client.invalidateQueries({ queryKey: ['user-access'] })
     },
   })
 }

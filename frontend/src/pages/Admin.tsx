@@ -7,12 +7,13 @@ import { Dialog } from '../components/Dialog'
 import { AuditLog } from '../components/AuditLog'
 import { SyncStatus } from '../components/SyncStatus'
 import { ProjectAdmin } from '../components/ProjectAdmin'
+import { GroupAdminTab, UserAccessTable, UserGroups } from '../components/AccessAdmin'
 import { Icon } from '../components/Icon'
 import { Tokens } from './Tokens'
 import type { CustomField, UserAdmin } from '../api/types'
 import { inkOn } from '../components/Status'
 
-type Tab = 'ozet' | 'projeler' | 'kullanicilar' | 'alanlar' | 'listeler'
+type Tab = 'ozet' | 'projeler' | 'kullanicilar' | 'gruplar' | 'alanlar' | 'listeler'
   | 'tokenlar' | 'denetim' | 'esitleme'
 
 const FIELD_TYPES = [
@@ -20,7 +21,12 @@ const FIELD_TYPES = [
   'multiselect',
 ]
 
-function UserDialog({ user, onClose }: { user: UserAdmin | 'new' | null; onClose: () => void }) {
+function UserDialog({ user, onClose, onCreated }: {
+  user: UserAdmin | 'new' | null
+  onClose: () => void
+  /** a new account stays open, so its projects and groups are set in the same go */
+  onCreated: (user: UserAdmin) => void
+}) {
   const { data: rolesData } = useRoles()
   const roles = rolesData?.roles ?? []
   const save = useSaveUser()
@@ -38,12 +44,14 @@ function UserDialog({ user, onClose }: { user: UserAdmin | 'new' | null; onClose
       name, email, role_id: roleId === '' ? null : roleId, is_active: active,
     }
     if (password) body.password = password
-    save.mutate({ id: row?.id, body }, { onSuccess: onClose })
+    save.mutate({ id: row?.id, body }, {
+      onSuccess: (saved) => (isNew ? onCreated(saved) : onClose()),
+    })
   }
 
   return (
-    <Dialog open={!!user} title={isNew ? 'Kullanıcı ekle' : 'Kullanıcıyı düzenle'}
-            onClose={onClose}
+    <Dialog open={!!user} title={isNew ? 'Kullanıcı ekle' : `Kullanıcı: ${row?.name}`}
+            onClose={onClose} width={isNew ? 520 : 1080}
             footer={<>
               <button onClick={onClose}>Vazgeç</button>
               <button className="primary" onClick={submit}
@@ -51,6 +59,7 @@ function UserDialog({ user, onClose }: { user: UserAdmin | 'new' | null; onClose
                 {save.isPending ? 'Kaydediliyor…' : 'Kaydet'}
               </button>
             </>}>
+      <div className={isNew ? 'stack' : 'user-dialog'}>
       <div className="stack">
         <div className="field">
           <label>Ad soyad</label>
@@ -85,6 +94,24 @@ function UserDialog({ user, onClose }: { user: UserAdmin | 'new' | null; onClose
           Aktif
         </label>
         {save.isError && <div className="error">{String((save.error as Error).message)}</div>}
+        {isNew && (
+          <div className="faint small">
+            Kaydettikten sonra bu pencerede grupları ve proje yetkilerini
+            ayarlayabilirsiniz.
+          </div>
+        )}
+      </div>
+
+      {/* beside the account rather than under it: the access table is the
+          reason most people open this dialog */}
+      {!isNew && row && (
+        <div className="stack">
+          <div className="section-rule" style={{ marginTop: 0 }}>Gruplar</div>
+          <UserGroups userId={row.id} />
+          <div className="section-rule">Projeler ve yetkiler</div>
+          <UserAccessTable userId={row.id} />
+        </div>
+      )}
       </div>
     </Dialog>
   )
@@ -286,7 +313,7 @@ export function Admin() {
 
       <div className="subtabs">
         {([['ozet', 'Genel'], ['projeler', 'Projeler'],
-           ['kullanicilar', 'Kullanıcılar ve Roller'],
+           ['kullanicilar', 'Kullanıcılar ve Roller'], ['gruplar', 'Gruplar'],
            ['alanlar', 'Özel Alanlar'], ['listeler', 'Listeler'],
            ['tokenlar', 'API Tokenları'],
            ['denetim', 'Denetim Kaydı'],
@@ -318,6 +345,8 @@ export function Admin() {
       )}
 
       {tab === 'projeler' && <ProjectAdmin />}
+
+      {tab === 'gruplar' && <GroupAdminTab />}
 
       {tab === 'kullanicilar' && (
         <>
@@ -447,7 +476,10 @@ export function Admin() {
 
       {tab === 'esitleme' && <SyncStatus />}
 
-      {editUser && <UserDialog user={editUser} onClose={() => setEditUser(null)} />}
+      {editUser && (
+        <UserDialog key={editUser === 'new' ? 'new' : editUser.id} user={editUser}
+                    onClose={() => setEditUser(null)} onCreated={setEditUser} />
+      )}
       {editField && <FieldDialog field={editField} onClose={() => setEditField(null)} />}
     </main>
   )

@@ -162,3 +162,59 @@ def test_admin_sees_a_closed_project(app_client, admin, project):
     app_client.patch(f"/api/projects/{project['id']}", headers=admin,
                      json={"default_role_id": role_id(app_client, admin, "No Access")})
     assert project["id"] in visible(app_client, admin)
+
+
+def test_access_page_explains_each_project(app_client, admin, person, project):
+    """The admin page's per-user table reads the same resolution the checks
+    use: it has to name the role and say where it came from."""
+    _, uid = person("Tester")
+    row = lambda: next(p for p in app_client.get(
+        f"/api/admin/users/{uid}/access", headers=admin).json()["projects"]
+        if p["project_id"] == project["id"])
+
+    assert row()["source"] == "global" and row()["roles"] == ["Tester"]
+
+    app_client.patch(f"/api/projects/{project['id']}", headers=admin,
+                     json={"default_role_id": role_id(app_client, admin, "No Access")})
+    assert row()["source"] == "default" and row()["can_read"] is False
+
+    group = app_client.post("/api/admin/groups", headers=admin,
+                            json={"name": f"G {secrets.token_hex(2)}",
+                                  "user_ids": [uid]}).json()
+    app_client.put(f"/api/projects/{project['id']}/groups", headers=admin,
+                   json={"group_id": group["id"],
+                         "role_id": role_id(app_client, admin, "Designer")})
+    assert row()["source"] == "group" and row()["roles"] == ["Designer"]
+    assert row()["groups"] == [group["name"]]
+
+    app_client.put(f"/api/projects/{project['id']}/members", headers=admin,
+                   json={"user_id": uid, "role_id": role_id(app_client, admin, "Lead")})
+    assert row()["source"] == "member" and row()["member_role_id"] is not None
+
+
+def test_groups_can_be_managed(app_client, admin, person):
+    _, a = person("Tester")
+    _, b = person("Tester")
+    name = f"Ekip {secrets.token_hex(2)}"
+    created = app_client.post("/api/admin/groups", headers=admin,
+                              json={"name": name, "user_ids": [a]})
+    assert created.status_code == 201, created.text
+    gid = created.json()["id"]
+
+    assert app_client.post("/api/admin/groups", headers=admin,
+                           json={"name": name.upper()}).status_code == 400
+
+    updated = app_client.patch(f"/api/admin/groups/{gid}", headers=admin,
+                               json={"user_ids": [b]}).json()
+    assert updated["user_ids"] == [b]
+
+    assert app_client.delete(f"/api/admin/groups/{gid}", headers=admin).status_code == 204
+    assert gid not in {g["id"] for g in
+                       app_client.get("/api/admin/groups", headers=admin).json()}
+
+
+def test_only_admins_read_access_tables(app_client, admin, person):
+    headers, uid = person("Tester")
+    assert app_client.get(f"/api/admin/users/{uid}/access",
+                          headers=headers).status_code == 403
+    assert app_client.get("/api/admin/groups", headers=headers).status_code == 403

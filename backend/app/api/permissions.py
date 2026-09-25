@@ -60,6 +60,47 @@ def _global(session: Session, user: User) -> set[str]:
         session.get(Role, user.role_id) if user.role_id else None)
 
 
+def _resolve(session: Session, user: User, project_id: int | None
+             ) -> tuple[set[str], str, list[int]]:
+    """(capabilities, where they came from, the roles involved).
+
+    The one place the precedence lives; capabilities() and the admin page's
+    "which projects, which role, and why" both read it, so what the page
+    explains is exactly what the checks enforce.
+    """
+    base = _global(session, user)
+    if ADMIN in base:
+        return set(ALL), "admin", [user.role_id] if user.role_id else []
+    if project_id is None:
+        return base, "global", [user.role_id] if user.role_id else []
+
+    member_role = session.scalar(
+        select(ProjectMember.role_id).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == user.id))
+    if member_role:
+        return (_role_capabilities(session.get(Role, member_role)),
+                "member", [member_role])
+
+    group_roles = sorted(set(session.scalars(
+        select(ProjectGroup.role_id)
+        .join(GroupMember, GroupMember.group_id == ProjectGroup.group_id)
+        .where(ProjectGroup.project_id == project_id,
+               GroupMember.user_id == user.id)).all()))
+    if group_roles:
+        caps: set[str] = set()
+        for role_id in group_roles:
+            caps |= _role_capabilities(session.get(Role, role_id))
+        return caps, "group", group_roles
+
+    default_role = session.scalar(
+        select(Project.default_role_id).where(Project.id == project_id))
+    if default_role:
+        return (_role_capabilities(session.get(Role, default_role)),
+                "default", [default_role])
+    return base, "global", [user.role_id] if user.role_id else []
+
+
 def capabilities(session: Session, user: User,
                  project_id: int | None = None) -> set[str]:
     """What this user may do, in this project if one is named.
@@ -75,35 +116,7 @@ def capabilities(session: Session, user: User,
     Until this was written out, only 2 and 5 existed and reading was never
     checked at all: a "No Access" account could open every project.
     """
-    base = _global(session, user)
-    if ADMIN in base:
-        return set(ALL)
-    if project_id is None:
-        return base
-
-    member_role = session.scalar(
-        select(ProjectMember.role_id).where(
-            ProjectMember.project_id == project_id,
-            ProjectMember.user_id == user.id))
-    if member_role:
-        return _role_capabilities(session.get(Role, member_role))
-
-    group_roles = session.scalars(
-        select(ProjectGroup.role_id)
-        .join(GroupMember, GroupMember.group_id == ProjectGroup.group_id)
-        .where(ProjectGroup.project_id == project_id,
-               GroupMember.user_id == user.id)).all()
-    if group_roles:
-        caps: set[str] = set()
-        for role_id in set(group_roles):
-            caps |= _role_capabilities(session.get(Role, role_id))
-        return caps
-
-    default_role = session.scalar(
-        select(Project.default_role_id).where(Project.id == project_id))
-    if default_role:
-        return _role_capabilities(session.get(Role, default_role))
-    return base
+    return _resolve(session, user, project_id)[0]
 
 
 def readable_project_ids(session: Session, user: User) -> set[int] | None:

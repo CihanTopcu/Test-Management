@@ -6,6 +6,43 @@ export interface Project {
   announcement: string | null
   is_completed: boolean
   suite_mode: number
+  /** TestRail's Default Access; null = everyone on their global role */
+  default_role_id: number | null
+}
+
+export interface ProjectGroupAccess {
+  group_id: number
+  role_id: number
+  name: string
+}
+
+export interface GroupAdmin {
+  id: number
+  name: string
+  user_ids: number[]
+  projects: { project_id: number; role_id: number }[]
+}
+
+export type AccessSource = 'admin' | 'member' | 'group' | 'default' | 'global'
+
+export interface UserAccessRow {
+  project_id: number
+  name: string
+  is_completed: boolean
+  can_read: boolean
+  capabilities: string[]
+  roles: string[]
+  source: AccessSource
+  source_label: string
+  member_role_id: number | null
+  groups: string[]
+}
+
+export interface UserAccess {
+  user_id: number
+  global_role_id: number | null
+  groups: string[]
+  projects: UserAccessRow[]
 }
 
 export interface ProjectMember {

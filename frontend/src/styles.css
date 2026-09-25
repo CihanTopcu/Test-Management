@@ -1336,3 +1336,14 @@ kbd {
 .moremenu-list button.danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
+
+/* a project this person cannot open, on the admin page's access table */
+tr.muted-row td { opacity: 0.55; }
+tr.muted-row td:last-child { opacity: 1; }
+
+/* the user dialog: the account on the left, groups and access on the right */
+.user-dialog {
+  display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px;
+  align-items: start;
+}
+@media (max-width: 900px) { .user-dialog { grid-template-columns: minmax(0, 1fr); } }
