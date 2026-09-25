@@ -13,6 +13,7 @@ import { StepsEditor, type StepDraft } from '../components/StepsEditor'
 import type { TestCase } from '../api/types'
 import { href, type Route } from '../route'
 import { Crumbs } from '../components/Crumbs'
+import { IssueRefs, issueKeys } from '../components/IssueRefs'
 
 /**
  * The case page is generated from the field catalog, not hard-coded.
@@ -320,9 +321,11 @@ export function CaseView({ route, projectName }: { route: Route; projectName: st
               <div className="k">Referanslar</div>
               <div className="v">
                 {item.refs
-                  ? (/^https?:\/\//.test(item.refs)
+                  // a plain link, unless it is a Jira address: that one
+                  // gets the key and its status like any other reference
+                  ? (/^https?:\/\//.test(item.refs) && !issueKeys(item.refs).length
                       ? <a href={item.refs} target="_blank" rel="noreferrer">{item.refs}</a>
-                      : item.refs)
+                      : <IssueRefs text={item.refs} />)
                   : <span className="faint">—</span>}
               </div>
             </div>

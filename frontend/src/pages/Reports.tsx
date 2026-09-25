@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import {
   useActivitySeries, useCatalog, useCoverage, useDefects, useDistribution,
-  useMilestoneProgress, usePassTrend,
+  useJiraIssues, useMilestoneProgress, usePassTrend,
 } from '../api/hooks'
+import { IssueRefs } from '../components/IssueRefs'
 import type { Catalog } from '../api/types'
 import { StackBar, TrendChart } from '../components/Charts'
 import { Icon } from '../components/Icon'
@@ -270,6 +271,7 @@ export function Reports({ route, projectName }: { route: Route; projectName: str
   const { data: byPriority } = useDistribution(route.project, 'priority')
   const { data: coverage } = useCoverage(route.project)
   const { data: defects } = useDefects(route.project)
+  const jira = useJiraIssues((defects?.items ?? []).slice(0, 12).map((d) => d.ref))
   const { data: catalog } = useCatalog()
   const [range, setRange] = useState(RANGES[1])
 
@@ -405,7 +407,9 @@ export function Reports({ route, projectName }: { route: Route; projectName: str
               <tbody>
                 {defects.items.slice(0, 12).map((d) => (
                   <tr key={d.ref} style={{ cursor: 'default' }}>
-                    <td style={{ width: 110 }}><b>{d.ref}</b></td>
+                    <td style={{ width: 118 }}>
+                      <IssueRefs text={d.ref} issues={jira.data ?? {}} compact />
+                    </td>
                     <td className="small muted ellipsis" title={d.tests[0]?.title}>
                       {d.tests.length > 1 && <span className="faint">+{d.tests.length - 1} · </span>}
                       {d.tests[0]?.title}

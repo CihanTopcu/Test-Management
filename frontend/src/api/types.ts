@@ -593,3 +593,14 @@ export interface AdminSummary {
   priorities: number
   statuses: number
 }
+
+export interface JiraIssue {
+  key: string
+  url: string
+  summary: string | null
+  status: string | null
+  /** Jira's own buckets: new | indeterminate | done */
+  category: 'new' | 'indeterminate' | 'done' | null
+  type: string | null
+  missing: boolean
+}

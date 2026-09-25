@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
-  ActivityByUserOut, ActivityItem, AdminSummary, Attachment, AuditPage, AutomationBacklog, CaseExplorerPage, CasePage, Catalog, Coverage, CustomField, DashboardOut, DefectReport, DigestPreview, Distribution, DuplicateGroup, FlakyCase, GroupAdmin, HistoryEntry, Milestone, MilestoneProgress, NeverRunCase, NotificationPreference, PassTrendWeek, Project, ProjectGroupAccess, ProjectMember, ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode, SeriesPoint, SubscriptionList, Suite, SyncStatusOut, Test, TestCase, TestDetail, TestPage, TodayOut, TodoItem, User, UserAccess, UserAdmin,
+  ActivityByUserOut, ActivityItem, AdminSummary, Attachment, AuditPage, AutomationBacklog, CaseExplorerPage, CasePage, Catalog, Coverage, CustomField, DashboardOut, DefectReport, DigestPreview, Distribution, DuplicateGroup, FlakyCase, GroupAdmin, HistoryEntry, JiraIssue, Milestone, MilestoneProgress, NeverRunCase, NotificationPreference, PassTrendWeek, Project, ProjectGroupAccess, ProjectMember, ProjectStats, Result, RolesResponse, Run, RunSummary, SectionNode, SeriesPoint, SubscriptionList, Suite, SyncStatusOut, Test, TestCase, TestDetail, TestPage, TodayOut, TodoItem, User, UserAccess, UserAdmin,
 } from './types'
 
 /** Lookup tables change about twice a year; keep them for the session. */
@@ -957,6 +957,27 @@ export const useMilestoneProgress = (projectId?: number) =>
       `/api/projects/${projectId}/reports/milestones`),
     enabled: !!projectId,
   })
+
+export const useJiraConfig = () =>
+  useQuery({
+    queryKey: ['jira-config'],
+    queryFn: () => api.get<{ enabled: boolean; base_url: string | null }>('/api/jira/config'),
+    ...STATIC,
+  })
+
+/** Status and summary for these issue keys, one request for the lot. */
+export const useJiraIssues = (keys: string[]) => {
+  const { data: config } = useJiraConfig()
+  const wanted = [...new Set(keys)].sort().slice(0, 200)
+  return useQuery({
+    queryKey: ['jira-issues', wanted.join(',')],
+    queryFn: () => api.get<Record<string, JiraIssue>>(
+      `/api/jira/issues?keys=${encodeURIComponent(wanted.join(','))}`),
+    enabled: !!config?.enabled && wanted.length > 0,
+    // the server caches for ten minutes too; nobody needs it fresher
+    staleTime: 10 * 60 * 1000,
+  })
+}
 
 // --- admin ------------------------------------------------------------------
 

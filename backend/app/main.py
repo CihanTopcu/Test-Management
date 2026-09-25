@@ -11,8 +11,8 @@ from .config import get_settings
 from . import ratelimit
 from .ratelimit import RateLimitMiddleware
 from .api.routers import (admin, attachments, auth, automation, cases,
-                          catalog, importer, overview, plans, reports, runs,
-                          search, workspace)
+                          catalog, importer, jira, overview, plans, reports,
+                          runs, search, workspace)
 
 settings = get_settings()
 
@@ -50,7 +50,8 @@ app.add_middleware(
 )
 
 for module in (auth, catalog, overview, cases, runs, plans, reports,
-               admin, automation, search, workspace, attachments, importer):
+               admin, automation, search, workspace, attachments, importer,
+               jira):
     app.include_router(module.router)
 
 

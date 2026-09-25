@@ -1496,3 +1496,26 @@ td.title { overflow-wrap: anywhere; }
   .panel table.fit, .panel > table.fit { min-width: 0; table-layout: auto; }
   .hide-narrow { display: none; }
 }
+
+/* ---- Jira keys (components/IssueRefs.tsx) --------------------------------
+   The dot carries Jira's own three buckets; the status name beside it (or
+   in the tooltip, when compact) says it in words, so colour is never alone. */
+a.issue {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 8px 1px 7px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text); font-family: var(--mono); font-size: 11.5px;
+  white-space: nowrap; vertical-align: 1px; text-decoration: none;
+}
+a.issue:hover { border-color: var(--accent); text-decoration: none; }
+a.issue i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); flex: none; }
+a.issue.new i { background: var(--blocked); }
+a.issue.indeterminate i { background: var(--accent); }
+a.issue.done i { background: var(--ok); }
+a.issue.missing { color: var(--text-faint); border-style: dashed; }
+a.issue.loading i { opacity: .4; }
+a.issue .st {
+  font-family: var(--sans); font-size: 11px; color: var(--text-dim);
+  padding-left: 5px; margin-left: 1px; border-left: 1px solid var(--border);
+}
+.issuerefs { line-height: 1.9; }

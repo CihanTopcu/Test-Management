@@ -10,6 +10,7 @@ import { Icon } from './Icon'
 import { RichText } from './RichText'
 import { StatusBadge } from './Status'
 import { href } from '../route'
+import { IssueRefs } from './IssueRefs'
 
 /**
  * The right-hand panel of a run: what the test asks for, and what happened.
@@ -329,7 +330,7 @@ export function TestPanel({ testId, catalog, projectId, runId, archived,
               {users.find((u) => u.id === r.created_by)?.name ?? '—'}
               {r.version && <> · sürüm {r.version}</>}
               {r.elapsed && <> · {r.elapsed}</>}
-              {r.defects && <> · hata {r.defects}</>}
+              {r.defects && <> · hata <IssueRefs text={r.defects} /></>}
             </div>
             {r.comment && <div style={{ marginTop: 6 }}><RichText value={r.comment} /></div>}
 

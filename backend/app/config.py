@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # where the app is reachable, used to build links inside e-mail
     public_url: str = "http://localhost:5173"
 
+    # Jira, read only: an issue key in a case's refs or a result's defects
+    # becomes a link, with the issue's status and summary beside it
+    jira_base_url: str = ""
+    jira_email: str = ""
+    jira_api_token: str = ""
+
     # mail is optional: with no host configured everything still lands in the
     # in-app notification list
     smtp_host: str = ""

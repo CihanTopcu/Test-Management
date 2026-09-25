@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { useCaseExplorer, useCatalog, useSuites } from '../api/hooks'
+import { useCaseExplorer, useCatalog, useJiraIssues, useSuites } from '../api/hooks'
+import { IssueRefs, issueKeys } from '../components/IssueRefs'
 import { Icon } from '../components/Icon'
 import { href, type Route } from '../route'
 import { Crumbs } from '../components/Crumbs'
@@ -36,6 +37,8 @@ export function CaseExplorer({ route, projectName }: {
   const params = useMemo(
     () => ({ limit: '100', sort: 'title', ...filters }), [filters])
   const { data, isLoading, isFetching } = useCaseExplorer(route.project, params)
+  // every key on the page in one request, not one per row
+  const jira = useJiraIssues((data?.items ?? []).flatMap((c) => issueKeys(c.refs)))
 
   const go = (patch: Record<string, string | undefined>) => {
     const next: Record<string, string> = { ...filters }
@@ -182,7 +185,7 @@ export function CaseExplorer({ route, projectName }: {
                 <td className="small muted">{priorityName(c.priority_id) ?? '—'}</td>
                 <td className="small">
                   {c.refs
-                    ? <span className="ref">{c.refs}</span>
+                    ? <IssueRefs text={c.refs} issues={jira.data ?? {}} compact />
                     : <span className="faint">—</span>}
                 </td>
                 <td style={{ textAlign: 'right' }}>
