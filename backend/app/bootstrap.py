@@ -120,6 +120,10 @@ def ensure_search_indexes() -> None:
                         str(exc)[:120])
             return
         for name, table, column in TRIGRAM_INDEXES:
+            # like the late columns: IF NOT EXISTS still waits for a lock
+            if c.scalar(text("SELECT 1 FROM pg_indexes WHERE indexname = :n"),
+                        {"n": name}):
+                continue
             c.execute(text(
                 f"CREATE INDEX IF NOT EXISTS {name} ON {table} "
                 f"USING gin ({column} gin_trgm_ops)"))
@@ -177,6 +181,14 @@ def ensure_native_id_range() -> None:
 def ensure_late_columns() -> None:
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
         for table, column, spec in LATE_COLUMNS:
+            # ALTER ... IF NOT EXISTS still takes an exclusive lock on the
+            # table, so a start-up behind any open transaction (a sync pass
+            # holds one for its whole run) hung until that ended. Look first.
+            if c.scalar(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = :t AND column_name = :c"),
+                    {"t": table, "c": column}):
+                continue
             c.execute(text(
                 f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {spec}"))
 

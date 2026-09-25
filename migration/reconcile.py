@@ -275,7 +275,9 @@ def main():
     diff = Diff()
     started = datetime.now()
 
-    with engine.connect() as c:
+    # autocommit: a read-only pass of half an hour must not hold a transaction
+    # open, or the API cannot start (its start-up waits for table locks)
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
         projects = t.all("get_projects", "projects")
         ours = local_ids(c, "SELECT testrail_id, name FROM projects WHERE testrail_id IS NOT NULL")
         diff.ids("projects", [p["id"] for p in projects], ours)
