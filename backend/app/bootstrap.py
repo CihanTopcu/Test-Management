@@ -129,6 +129,7 @@ def ensure_search_indexes() -> None:
 # missing tables, so an existing database needs these spelled out.
 LATE_COLUMNS = [
     ("sections", "is_deleted", "boolean NOT NULL DEFAULT false"),
+    ("projects", "default_role_id", "integer REFERENCES roles(id)"),
 ]
 
 
@@ -137,6 +138,18 @@ def ensure_late_columns() -> None:
         for table, column, spec in LATE_COLUMNS:
             c.execute(text(
                 f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {spec}"))
+
+
+def ensure_no_access_role(session: Session) -> None:
+    """The role that closes a project, present on every instance.
+
+    A migrated instance brings TestRail's own; a fresh one never had it, so
+    there was no way to make a project private at all.
+    """
+    if not session.scalar(
+            select(Role).where(func.lower(Role.name) == "no access")):
+        session.add(Role(name="No Access", permissions={"capabilities": []}))
+        session.commit()
 
 
 def run() -> None:
@@ -149,6 +162,7 @@ def run() -> None:
         # unconditional: these are the rows every write path depends on, and
         # an instance can have users while an upgrade adds a new lookup table
         seed_vocabularies(session)
+        ensure_no_access_role(session)
 
         if session.scalar(select(func.count()).select_from(User)):
             return  # an instance with users is not a fresh one

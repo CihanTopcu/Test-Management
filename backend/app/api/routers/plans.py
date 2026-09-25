@@ -17,7 +17,7 @@ from ...db import get_session
 from ...models import (Attachment, Case, Plan, PlanEntry, Result, Run, Suite,
                        Test, User)
 from ..deps import current_user
-from ..permissions import WRITE_RUNS, assert_can
+from ..permissions import WRITE_RUNS, assert_can, assert_read, assert_read_of
 
 router = APIRouter(prefix="/api", tags=["plans"])
 
@@ -85,7 +85,8 @@ def _make_run(session: Session, plan: Plan, entry_row: PlanEntry,
 
 @router.get("/projects/{project_id}/plans")
 def list_plans(project_id: int, session: Session = Depends(get_session),
-               _: User = Depends(current_user)):
+               user: User = Depends(current_user)):
+    assert_read(session, user, project_id)
     plans = session.scalars(
         select(Plan).where(Plan.project_id == project_id)
         .order_by(Plan.created_on.desc().nulls_last())).all()
@@ -131,7 +132,8 @@ def list_plans(project_id: int, session: Session = Depends(get_session),
 
 @router.get("/plans/{plan_id}")
 def get_plan(plan_id: int, session: Session = Depends(get_session),
-             _: User = Depends(current_user)):
+             user: User = Depends(current_user)):
+    assert_read_of(session, user, plan=plan_id)
     plan = session.get(Plan, plan_id)
     if plan is None:
         raise HTTPException(404, "plan bulunamadi")

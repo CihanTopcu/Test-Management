@@ -9,11 +9,12 @@ from ...audit import record
 from ...db import get_session
 from pydantic import BaseModel
 
-from ...models import (CaseType, CustomField, CustomFieldOption, Milestone,
-                       Priority, Project, ProjectMember, Status, Template,
-                       User)
+from ...models import (CaseType, CustomField, CustomFieldOption, Group,
+                       Milestone, Priority, Project, ProjectGroup,
+                       ProjectMember, Role, Status, Template, User)
 from ..deps import current_user
-from ..permissions import MANAGE_PROJECT, assert_can, capabilities
+from ..permissions import (MANAGE_PROJECT, assert_can, assert_may_grant,
+                           assert_read, capabilities, readable_project_ids)
 from ..schemas import (CatalogOut, CustomFieldOut, MilestoneCreate,
                        MilestoneOut, MilestoneUpdate, ProjectOut, UserOut)
 
@@ -22,8 +23,13 @@ router = APIRouter(prefix="/api", tags=["catalog"])
 
 @router.get("/projects", response_model=list[ProjectOut])
 def list_projects(session: Session = Depends(get_session),
-                  _: User = Depends(current_user)):
-    return session.scalars(select(Project).order_by(Project.name)).all()
+                  user: User = Depends(current_user)):
+    """The projects this user may open -- not every project there is."""
+    query = select(Project).order_by(Project.name)
+    readable = readable_project_ids(session, user)
+    if readable is not None:
+        query = query.where(Project.id.in_(readable))
+    return session.scalars(query).all()
 
 
 class ProjectIn(BaseModel):
@@ -38,6 +44,8 @@ class ProjectPatch(BaseModel):
     announcement: str | None = None
     show_announcement: bool | None = None
     is_completed: bool | None = None
+    # sent as null to go back to "global role"; omitted to leave it alone
+    default_role_id: int | None = None
 
 
 @router.post("/projects", response_model=ProjectOut, status_code=201)
@@ -74,6 +82,12 @@ def update_project(project_id: int, payload: ProjectPatch,
         raise HTTPException(404, "proje bulunamadi")
     assert_can(session, user, MANAGE_PROJECT, project_id)
     data = payload.model_dump(exclude_unset=True)
+    if "default_role_id" in data:
+        assert_may_grant(session, user, project_id, data["default_role_id"])
+        record(session, user, "update", "project_access", project_id,
+               label=project.name, project_id=project_id,
+               detail={"default_role_id": data["default_role_id"],
+                       "before": project.default_role_id})
     if data.get("is_completed") and not project.completed_on:
         project.completed_on = datetime.now(timezone.utc)
     if data.get("is_completed") is False:
@@ -94,7 +108,8 @@ class MemberIn(BaseModel):
 
 @router.get("/projects/{project_id}/members")
 def list_members(project_id: int, session: Session = Depends(get_session),
-                 _: User = Depends(current_user)):
+                 user: User = Depends(current_user)):
+    assert_read(session, user, project_id)
     rows = session.execute(
         select(ProjectMember, User.name, User.email)
         .join(User, User.id == ProjectMember.user_id)
@@ -114,6 +129,7 @@ def set_member(project_id: int, payload: MemberIn, request: Request,
     one product and only read another.
     """
     assert_can(session, user, MANAGE_PROJECT, project_id)
+    assert_may_grant(session, user, project_id, payload.role_id)
     row = session.scalar(
         select(ProjectMember).where(ProjectMember.project_id == project_id,
                                     ProjectMember.user_id == payload.user_id))
@@ -143,9 +159,72 @@ def remove_member(project_id: int, user_id: int, request: Request,
         session.commit()
 
 
+# --- group access -----------------------------------------------------------
+
+class GroupAccessIn(BaseModel):
+    group_id: int
+    role_id: int
+
+
+@router.get("/projects/{project_id}/groups")
+def list_group_access(project_id: int, session: Session = Depends(get_session),
+                      user: User = Depends(current_user)):
+    """Groups holding a role in this project, as TestRail's Access tab
+    lists them under the individual users."""
+    assert_read(session, user, project_id)
+    rows = session.execute(
+        select(ProjectGroup, Group.name)
+        .join(Group, Group.id == ProjectGroup.group_id)
+        .where(ProjectGroup.project_id == project_id)
+        .order_by(Group.name)).all()
+    return [{"group_id": g.group_id, "role_id": g.role_id, "name": name}
+            for g, name in rows]
+
+
+@router.put("/projects/{project_id}/groups")
+def set_group_access(project_id: int, payload: GroupAccessIn, request: Request,
+                     session: Session = Depends(get_session),
+                     user: User = Depends(current_user)):
+    assert_can(session, user, MANAGE_PROJECT, project_id)
+    assert_may_grant(session, user, project_id, payload.role_id)
+    if session.get(Group, payload.group_id) is None:
+        raise HTTPException(404, "grup bulunamadi")
+    if session.get(Role, payload.role_id) is None:
+        raise HTTPException(400, "rol bulunamadi")
+    row = session.scalar(
+        select(ProjectGroup).where(ProjectGroup.project_id == project_id,
+                                   ProjectGroup.group_id == payload.group_id))
+    if row is None:
+        row = ProjectGroup(project_id=project_id, group_id=payload.group_id,
+                           role_id=payload.role_id)
+        session.add(row)
+    row.role_id = payload.role_id
+    record(session, user, "update", "project_group", payload.group_id,
+           project_id=project_id, request=request,
+           detail={"role_id": payload.role_id})
+    session.commit()
+    return {"group_id": payload.group_id, "role_id": payload.role_id}
+
+
+@router.delete("/projects/{project_id}/groups/{group_id}", status_code=204)
+def remove_group_access(project_id: int, group_id: int, request: Request,
+                        session: Session = Depends(get_session),
+                        user: User = Depends(current_user)):
+    assert_can(session, user, MANAGE_PROJECT, project_id)
+    row = session.scalar(
+        select(ProjectGroup).where(ProjectGroup.project_id == project_id,
+                                   ProjectGroup.group_id == group_id))
+    if row is not None:
+        record(session, user, "delete", "project_group", group_id,
+               project_id=project_id, request=request)
+        session.delete(row)
+        session.commit()
+
+
 @router.get("/projects/{project_id}", response_model=ProjectOut)
 def get_project(project_id: int, session: Session = Depends(get_session),
-                _: User = Depends(current_user)):
+                user: User = Depends(current_user)):
+    assert_read(session, user, project_id)
     project = session.get(Project, project_id)
     if project is None:
         raise HTTPException(404, "proje bulunamadi")
@@ -155,7 +234,8 @@ def get_project(project_id: int, session: Session = Depends(get_session),
 @router.get("/projects/{project_id}/milestones",
             response_model=list[MilestoneOut])
 def list_milestones(project_id: int, session: Session = Depends(get_session),
-                    _: User = Depends(current_user)):
+                    user: User = Depends(current_user)):
+    assert_read(session, user, project_id)
     return session.scalars(
         select(Milestone)
         .where(Milestone.project_id == project_id)

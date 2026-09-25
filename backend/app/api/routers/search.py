@@ -15,6 +15,8 @@ from ...db import get_session
 from ...models import (Case, CaseStep, CaseType, Milestone, Priority, Run,
                        Section, Suite, User)
 from ..deps import current_user
+from ..permissions import (assert_read, assert_read_of, project_of,
+                           readable_project_ids)
 
 router = APIRouter(prefix="/api", tags=["search"])
 
@@ -24,9 +26,17 @@ def search(q: str = Query(min_length=2),
            project_id: int | None = None,
            limit: int = 40,
            session: Session = Depends(get_session),
-           _: User = Depends(current_user)):
+           user: User = Depends(current_user)):
     """One call, several kinds of hit: a case id, a case title, a run, a
-    milestone. Typing C15477 should land on that case, not search for it."""
+    milestone. Typing C15477 should land on that case, not search for it.
+
+    Only in projects this user may open: a search box that finds cases in a
+    closed project is the easiest way around closing it."""
+    if project_id:
+        assert_read(session, user, project_id)
+        scope: set[int] | None = {project_id}
+    else:
+        scope = readable_project_ids(session, user)
     term = q.strip()
     like = f"%{term}%"
     out: dict[str, list] = {"cases": [], "runs": [], "milestones": []}
@@ -35,15 +45,16 @@ def search(q: str = Query(min_length=2),
     bare = term[1:] if term[:1].upper() == "C" else term
     if bare.isdigit():
         case = session.get(Case, int(bare))
-        if case is not None:
+        if case is not None and (
+                scope is None or project_of(session, case=case.id) in scope):
             out["cases"].append({"id": case.id, "title": case.title,
                                  "suite_id": case.suite_id,
                                  "section_id": case.section_id, "exact": True})
 
     suite_ids = None
-    if project_id:
+    if scope is not None:
         suite_ids = select(Suite.id).where(
-            Suite.project_id == project_id).scalar_subquery()
+            Suite.project_id.in_(scope or [-1])).scalar_subquery()
 
     where = [Case.is_deleted.is_(False),
              or_(Case.title.ilike(like), Case.refs.ilike(like))]
@@ -58,8 +69,8 @@ def search(q: str = Query(min_length=2),
                      for c in rows if c.id not in seen]
 
     run_where = [Run.name.ilike(like)]
-    if project_id:
-        run_where.append(Run.project_id == project_id)
+    if scope is not None:
+        run_where.append(Run.project_id.in_(scope or [-1]))
     out["runs"] = [{"id": r.id, "name": r.name, "project_id": r.project_id}
                    for r in session.scalars(
                        select(Run).where(*run_where)
@@ -67,8 +78,8 @@ def search(q: str = Query(min_length=2),
                        .limit(15))]
 
     ms_where = [Milestone.name.ilike(like)]
-    if project_id:
-        ms_where.append(Milestone.project_id == project_id)
+    if scope is not None:
+        ms_where.append(Milestone.project_id.in_(scope or [-1]))
     out["milestones"] = [{"id": m.id, "name": m.name, "project_id": m.project_id}
                          for m in session.scalars(
                              select(Milestone).where(*ms_where).limit(15))]
@@ -81,13 +92,14 @@ def search(q: str = Query(min_length=2),
 def export_cases(suite_id: int,
                  section_id: int | None = None,
                  session: Session = Depends(get_session),
-                 _: User = Depends(current_user)):
+                 user: User = Depends(current_user)):
     """CSV of a suite, steps flattened into one cell per case.
 
     Exports are how people get data out when a tool cannot answer their
     question; refusing to provide one is how a tool becomes the next thing
     somebody wants to migrate away from.
     """
+    assert_read_of(session, user, suite=suite_id)
     where = [Case.suite_id == suite_id, Case.is_deleted.is_(False)]
     if section_id:
         where.append(Case.section_id == section_id)
@@ -137,9 +149,10 @@ def export_cases(suite_id: int,
 @router.get("/projects/{project_id}/case-field-values")
 def field_values(project_id: int, field: str,
                  session: Session = Depends(get_session),
-                 _: User = Depends(current_user)):
+                 user: User = Depends(current_user)):
     """Distinct values a custom field actually takes in this project, so the
     filter offers real choices instead of the whole option list."""
+    assert_read(session, user, project_id)
     suite_ids = select(Suite.id).where(
         Suite.project_id == project_id).scalar_subquery()
     rows = session.execute(

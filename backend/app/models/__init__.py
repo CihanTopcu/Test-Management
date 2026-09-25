@@ -6,7 +6,8 @@ from .catalog import (CaseType, CustomField, CustomFieldOption, Priority,
                       Status, Template)
 from .execution import (Config, ConfigGroup, Milestone, Plan, PlanEntry,
                         Result, ResultStep, Run, Test)
-from .org import Group, GroupMember, Project, ProjectMember, Role, User
+from .org import (Group, GroupMember, Project, ProjectGroup, ProjectMember,
+                  Role, User)
 from .tokens import ApiToken
 from .workspace import (AuditEntry, Notification,
                         NotificationPreference, ReportSubscription,
@@ -16,7 +17,7 @@ __all__ = [
     "ApiToken", "Attachment", "AuditEntry", "Base", "Case", "CaseHistory", "CaseLabel", "CaseStep",
     "CaseType", "Config", "ConfigGroup", "CustomField", "CustomFieldOption",
     "Group", "GroupMember", "Label", "Milestone", "Plan", "PlanEntry",
-    "Priority", "Project", "ProjectMember", "Result", "ResultStep", "Role",
+    "Priority", "Project", "ProjectGroup", "ProjectMember", "Result", "ResultStep", "Role",
     "Notification", "NotificationPreference", "ReportSubscription",
     "Run", "SavedFilter",
     "Section", "SharedStep", "Status", "Suite", "SyncRun", "Template",

@@ -13,7 +13,8 @@ from ...config import get_settings
 from ...db import get_session
 from ...models import Attachment, User
 from ..deps import current_user
-from ..permissions import MANAGE_PROJECT, assert_can
+from ..permissions import (MANAGE_PROJECT, assert_can, assert_read,
+                           readable_project_ids)
 
 router = APIRouter(prefix="/api/attachments", tags=["attachments"])
 
@@ -23,7 +24,7 @@ MAX_UPLOAD = 25 * 1024 * 1024
 @router.get("/{attachment_id}")
 def get_attachment(attachment_id: str, missing: int = 0,
                    session: Session = Depends(get_session),
-                   _: User = Depends(current_user)):
+                   user: User = Depends(current_user)):
     row = session.scalar(
         select(Attachment).where(Attachment.testrail_id == attachment_id))
     if row is None:
@@ -35,6 +36,11 @@ def get_attachment(attachment_id: str, missing: int = 0,
             content={"detail": "bu gorsel TestRail'den alinamadi",
                      "attachment_id": attachment_id,
                      "reason": "testrail_api_erisemiyor"})
+
+    # Inline images carry no project; they are only reachable by an opaque
+    # id that appears inside a case text, which is itself access-checked.
+    if row.project_id is not None:
+        assert_read(session, user, row.project_id)
 
     path = os.path.join(get_settings().storage_dir, row.storage_key)
     if not os.path.exists(path):
@@ -130,12 +136,15 @@ async def upload(file: UploadFile = File(...),
 @router.get("")
 def list_for_entity(entity_type: str, entity_id: int,
                     session: Session = Depends(get_session),
-                    _: User = Depends(current_user)):
+                    user: User = Depends(current_user)):
     rows = session.scalars(
         select(Attachment)
         .where(Attachment.entity_type == entity_type,
                Attachment.entity_id == entity_id)
         .order_by(Attachment.created_on.desc())).all()
+    readable = readable_project_ids(session, user)
+    if readable is not None:
+        rows = [a for a in rows if a.project_id is None or a.project_id in readable]
     return [{"id": a.testrail_id, "filename": a.filename, "size": a.size,
              "content_type": a.content_type, "created_on": a.created_on,
              "url": f"/api/attachments/{a.testrail_id}"} for a in rows]

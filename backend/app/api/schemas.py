@@ -21,6 +21,8 @@ class ProjectOut(ORMModel):
     announcement: str | None = None
     is_completed: bool
     suite_mode: int
+    # null: everyone gets their global role here (TestRail's "Global Role")
+    default_role_id: int | None = None
 
 
 class SuiteOut(ORMModel):

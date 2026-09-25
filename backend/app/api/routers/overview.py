@@ -9,9 +9,17 @@ from ...db import get_session
 from ...models import (Case, CaseHistory, Milestone, Project, ProjectMember,
                        Result, Run, Section, Suite, Test, User)
 from ..deps import current_user
+from ..permissions import assert_read, readable_project_ids
 from ..schemas import ActivityItem, ProjectStats, TodoItem
 
 router = APIRouter(prefix="/api", tags=["overview"])
+
+
+def _within(ids: set[int] | None, column) -> list:
+    """A where-clause list limiting `column` to `ids`; None means no limit."""
+    if ids is None:
+        return []
+    return [column.in_(ids or [-1])]
 
 # TestRail's own ids, which this instance kept. "Failed" is one status out of
 # nine, not "everything that is not passed" -- a run holding two deferred
@@ -21,8 +29,9 @@ PASSED, UNTESTED, FAILED = 1, 3, 5
 
 @router.get("/projects/{project_id}/stats", response_model=ProjectStats)
 def project_stats(project_id: int, session: Session = Depends(get_session),
-                  _: User = Depends(current_user)):
+                  user: User = Depends(current_user)):
     """One query set instead of the six round trips the UI would otherwise make."""
+    assert_read(session, user, project_id)
     suite_ids = select(Suite.id).where(Suite.project_id == project_id).scalar_subquery()
 
     suites = session.scalar(
@@ -70,8 +79,9 @@ def project_stats(project_id: int, session: Session = Depends(get_session),
 @router.get("/projects/{project_id}/activity", response_model=list[ActivityItem])
 def project_activity(project_id: int, limit: int = 25,
                      session: Session = Depends(get_session),
-                     _: User = Depends(current_user)):
+                     user: User = Depends(current_user)):
     """Most recent result entries across the project."""
+    assert_read(session, user, project_id)
     rows = session.execute(
         select(Run.id, Run.name, Test.id, Test.title, Result.status_id,
                Result.created_on, Result.created_by)
@@ -100,7 +110,8 @@ def my_todo(limit: int = 200, session: Session = Depends(get_session),
         .join(Project, Run.project_id == Project.id)
         .where(Test.assignedto_id == user.id,
                Run.is_completed.is_(False),
-               (Test.status_id.is_(None)) | (Test.status_id == 3))
+               (Test.status_id.is_(None)) | (Test.status_id == 3),
+               *_within(readable_project_ids(session, user), Run.project_id))
         .order_by(Project.name, Run.name)
         .limit(limit)).all()
     return [TodoItem(project_id=r[0], project_name=r[1], run_id=r[2],
@@ -122,8 +133,10 @@ def dashboard(days: int = 30, session: Session = Depends(get_session),
     release history, and including them would make every project look busy.
     """
     since = datetime.now(timezone.utc) - timedelta(days=max(days, 1))
+    readable = readable_project_ids(session, user)
     projects = session.scalars(
-        select(Project).order_by(Project.name)).all()
+        select(Project).where(*_within(readable, Project.id))
+        .order_by(Project.name)).all()
     names = {p.id: p.name for p in projects}
 
     cases = dict(session.execute(
@@ -195,13 +208,14 @@ def dashboard(days: int = 30, session: Session = Depends(get_session),
     return {
         "days": days,
         "generated_on": datetime.now(timezone.utc),
+        # summed over the projects shown, not every project there is
         "totals": {
             "projects": len(projects),
-            "cases": sum(cases.values()),
-            "active_runs": sum(active_runs.values()),
-            "results_in_window": sum(recent.values()),
-            "open_milestones": sum(open_milestones.values()),
-            "overdue_milestones": sum(overdue.values()),
+            "cases": sum(cases.get(p.id, 0) for p in projects),
+            "active_runs": sum(active_runs.get(p.id, 0) for p in projects),
+            "results_in_window": sum(recent.get(p.id, 0) for p in projects),
+            "open_milestones": sum(open_milestones.get(p.id, 0) for p in projects),
+            "overdue_milestones": sum(overdue.get(p.id, 0) for p in projects),
         },
         "projects": items,
         "names": names,
@@ -211,7 +225,7 @@ def dashboard(days: int = 30, session: Session = Depends(get_session),
 @router.get("/activity-by-user")
 def activity_by_user(days: int = 90, project_id: int | None = None,
                      session: Session = Depends(get_session),
-                     _: User = Depends(current_user)):
+                     viewer: User = Depends(current_user)):
     """Who did what, across the instance.
 
     A caution that belongs with the numbers rather than in a wiki page: in
@@ -224,11 +238,18 @@ def activity_by_user(days: int = 90, project_id: int | None = None,
     is somebody at a keyboard.
     """
     since = datetime.now(timezone.utc) - timedelta(days=max(days, 1))
+    # one project if asked for one; otherwise whatever this viewer can see,
+    # which for an administrator is the whole instance
+    if project_id is not None:
+        assert_read(session, viewer, project_id)
+        scope: set[int] | None = {project_id}
+    else:
+        scope = readable_project_ids(session, viewer)
 
     def scoped(query, run_join=True):
-        if project_id is None:
+        if scope is None or not run_join:
             return query
-        return query.where(Run.project_id == project_id) if run_join else query
+        return query.where(*_within(scope, Run.project_id))
 
     # One pass over the result table, grouped by account and project; the
     # per-account totals are summed from it. Asking twice -- once for totals,
@@ -249,9 +270,7 @@ def activity_by_user(days: int = 90, project_id: int | None = None,
         results[uid] = results.get(uid, 0) + count
         spread.setdefault(uid, []).append({"project": name, "results": count})
 
-    suite_filter = []
-    if project_id is not None:
-        suite_filter.append(Suite.project_id == project_id)
+    suite_filter = _within(scope, Suite.project_id)
 
     created = dict(session.execute(
         select(Case.created_by, func.count())
@@ -344,7 +363,8 @@ def today(runs: int = Query(8, ge=1, le=50),
         .join(Project, Run.project_id == Project.id)
         .where(Test.assignedto_id == user.id,
                Run.is_completed.is_(False), Run.is_archived.is_(False),
-               (Test.status_id.is_(None)) | (Test.status_id == 3))
+               (Test.status_id.is_(None)) | (Test.status_id == 3),
+               *_within(readable_project_ids(session, user), Run.project_id))
         .group_by(Project.id, Project.name, Run.id, Run.name)
         .order_by(func.count(Test.id).desc())
         .limit(12)).all()
@@ -412,6 +432,12 @@ def today(runs: int = Query(8, ge=1, le=50),
     member_of = [m for (m,) in session.execute(
         select(ProjectMember.project_id)
         .where(ProjectMember.user_id == user.id)).all()]
+    has_memberships = bool(member_of)
+    # memberships narrow what is shown; access decides what may be shown at
+    # all, so a membership in a project closed to this person does not count
+    readable = readable_project_ids(session, user)
+    if readable is not None:
+        member_of = [m for m in member_of if m in readable] or sorted(readable) or [-1]
 
     failure_where = [Result.created_on >= since, Result.status_id == 5,
                      Run.is_archived.is_(False)]
@@ -503,7 +529,7 @@ def today(runs: int = Query(8, ge=1, le=50),
         "failures": failures,
         "failures_total": total_failures,
         "milestones": milestones,
-        "scoped_to_memberships": bool(member_of),
+        "scoped_to_memberships": has_memberships,
         # said out loud so an empty page is explained rather than just empty
         "assignment_in_use": bool(session.scalar(
             select(func.count()).select_from(Test)

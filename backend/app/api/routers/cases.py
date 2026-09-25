@@ -10,7 +10,7 @@ from ...db import get_session
 from ...models import (Attachment, Case, CaseHistory, CaseStep, Run, Section,
                        Suite, Test, User)
 from ..deps import current_user
-from ..permissions import WRITE_CASES, assert_can
+from ..permissions import WRITE_CASES, assert_can, assert_read, assert_read_of
 from ..rendering import referenced_ids, rewrite_deep
 from ..schemas import (CaseCreate, CaseOut, CasePage, CaseSummary, CaseUpdate,
                        SectionCreate, SectionNode, SectionOut, SectionUpdate,
@@ -43,12 +43,13 @@ def _render_case(session: Session, case: Case) -> CaseOut:
 
 @router.get("/projects/{project_id}/suites", response_model=list[SuiteOut])
 def list_suites(project_id: int, session: Session = Depends(get_session),
-                _: User = Depends(current_user)):
+                user: User = Depends(current_user)):
     """Suites with their section, case and run counts.
 
     The suite list is the first thing anyone sees in a project, and a bare
     list of names tells them nothing about where the work is.
     """
+    assert_read(session, user, project_id)
     suites = session.scalars(
         select(Suite).where(Suite.project_id == project_id)
         .order_by(Suite.name)).all()
@@ -277,12 +278,13 @@ def delete_section(section_id: int, request: Request,
 
 @router.get("/suites/{suite_id}/sections", response_model=list[SectionNode])
 def section_tree(suite_id: int, session: Session = Depends(get_session),
-                 _: User = Depends(current_user)):
+                 user: User = Depends(current_user)):
     """The whole tree in one call, with per-section case counts.
 
     One suite here holds 909 sections; fetching them level by level would mean
     hundreds of round trips just to draw the sidebar.
     """
+    assert_read_of(session, user, suite=suite_id)
     sections = session.scalars(
         select(Section).where(Section.suite_id == suite_id,
                               Section.is_deleted.is_(False))
@@ -333,8 +335,9 @@ def list_cases(suite_id: int,
                offset: int = 0,
                limit: int = Query(100, le=500),
                session: Session = Depends(get_session),
-               _: User = Depends(current_user)):
+               user: User = Depends(current_user)):
     """List cases with the filters a five-thousand-case suite makes necessary."""
+    assert_read_of(session, user, suite=suite_id)
     where = [Case.suite_id == suite_id]
     if section_id is not None:
         if include_subsections:
@@ -390,7 +393,7 @@ def explore_cases(project_id: int,
                   offset: int = 0,
                   limit: int = Query(100, le=500),
                   session: Session = Depends(get_session),
-                  _: User = Depends(current_user)):
+                  user: User = Depends(current_user)):
     """The case library across a whole project, filtered.
 
     Every number on the reports page was a dead end: you could read that a
@@ -401,6 +404,7 @@ def explore_cases(project_id: int,
     Each row carries how many runs it has appeared in, which is what makes
     "never run" and "run constantly" separable when deciding what to prune.
     """
+    assert_read(session, user, project_id)
     suite_ids = select(Suite.id).where(
         Suite.project_id == project_id).scalar_subquery()
 
@@ -465,7 +469,8 @@ def explore_cases(project_id: int,
 
 @router.get("/cases/{case_id}", response_model=CaseOut)
 def get_case(case_id: int, session: Session = Depends(get_session),
-             _: User = Depends(current_user)):
+             user: User = Depends(current_user)):
+    assert_read_of(session, user, case=case_id)
     case = session.scalar(
         select(Case).where(Case.id == case_id)
         .options(selectinload(Case.steps)))
@@ -604,7 +609,8 @@ def delete_case(case_id: int, session: Session = Depends(get_session),
 
 @router.get("/cases/{case_id}/history")
 def case_history(case_id: int, session: Session = Depends(get_session),
-                 _: User = Depends(current_user)):
+                 user: User = Depends(current_user)):
+    assert_read_of(session, user, case=case_id)
     rows = session.scalars(
         select(CaseHistory).where(CaseHistory.case_id == case_id)
         .order_by(CaseHistory.created_on.desc())).all()

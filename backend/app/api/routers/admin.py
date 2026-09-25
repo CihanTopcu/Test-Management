@@ -20,8 +20,8 @@ from ...models import (AuditEntry, CaseType, CustomField, CustomFieldOption,
                        Priority, Project, Role, Status, SyncRun, User)
 from ...security import hash_password
 from ..deps import current_user
+from ..permissions import ADMIN, capabilities, default_for
 from ..permissions import ALL as ALL_CAPABILITIES
-from ..permissions import default_for
 from ..schemas import (CustomFieldCreate, CustomFieldOut, CustomFieldUpdate,
                        UserAdminOut, UserCreate, UserUpdate)
 
@@ -30,8 +30,9 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 def require_admin(user: User = Depends(current_user),
                   session: Session = Depends(get_session)) -> User:
-    role = session.get(Role, user.role_id) if user.role_id else None
-    if role is None or role.name.strip().lower() != "admin":
+    # the admin capability, not a role that happens to be called "Admin":
+    # renaming that role used to lock every administrator out of this page
+    if ADMIN not in capabilities(session, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN,
                             "bu islem icin yonetici yetkisi gerekli")
     return user

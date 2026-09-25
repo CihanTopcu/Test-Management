@@ -11,7 +11,8 @@ from ...notifications import notify
 from ...models import (Attachment, Case, CaseStep, Result, ResultStep, Run,
                        Status, Test, User)
 from ..deps import current_user
-from ..permissions import WRITE_RESULTS, WRITE_RUNS, assert_can
+from ..permissions import (WRITE_RESULTS, WRITE_RUNS, assert_can, assert_read,
+                           assert_read_of)
 from ..rendering import referenced_ids, rewrite_deep
 from ..schemas import (CaseIds, ResultCreate, ResultOut, RunCreate, RunOut,
                        RunUpdate, TestOut, TestPage, TestPatch)
@@ -28,7 +29,7 @@ def list_runs(project_id: int,
               offset: int = 0,
               limit: int = Query(100, le=500),
               session: Session = Depends(get_session),
-              _: User = Depends(current_user)):
+              user: User = Depends(current_user)):
     """Live runs by default.
 
     TestRail archives a run when a release is done, and there are seven
@@ -36,6 +37,7 @@ def list_runs(project_id: int,
     useless for the work actually in flight, so archived is a deliberate
     switch.
     """
+    assert_read(session, user, project_id)
     where = [Run.project_id == project_id, Run.is_archived.is_(archived)]
     if milestone_id is not None:
         where.append(Run.milestone_id == milestone_id)
@@ -154,7 +156,8 @@ def update_run(run_id: int, payload: RunUpdate,
 
 @router.get("/runs/{run_id}", response_model=RunOut)
 def get_run(run_id: int, session: Session = Depends(get_session),
-            _: User = Depends(current_user)):
+            user: User = Depends(current_user)):
+    assert_read_of(session, user, run=run_id)
     run = session.get(Run, run_id)
     if run is None:
         raise HTTPException(404, "kosum bulunamadi")
@@ -311,12 +314,13 @@ def delete_result(result_id: int, request: Request,
 
 @router.get("/runs/{run_id}/summary")
 def run_summary(run_id: int, session: Session = Depends(get_session),
-                _: User = Depends(current_user)):
+                user: User = Depends(current_user)):
     """Status breakdown, computed rather than stored.
 
     TestRail keeps denormalised passed_count/failed_count columns on the run
     and they drift. One grouped count over 88k rows is fast enough.
     """
+    assert_read_of(session, user, run=run_id)
     rows = session.execute(
         select(Test.status_id, func.count())
         .where(Test.run_id == run_id).group_by(Test.status_id)).all()
@@ -334,13 +338,14 @@ def list_tests(run_id: int,
                offset: int = 0,
                limit: int = Query(200, le=1000),
                session: Session = Depends(get_session),
-               _: User = Depends(current_user)):
+               user: User = Depends(current_user)):
     """One page of a run's tests, with the real total.
 
     The biggest run here holds 10,062 tests. Returning a bare list meant the
     grid showed the first page and gave no sign there was more, and filtering
     in the browser could only ever filter what had already been fetched.
     """
+    assert_read_of(session, user, run=run_id)
     where = [Test.run_id == run_id]
     if status_id is not None:
         where.append(Test.status_id == status_id)
@@ -378,13 +383,14 @@ def _render_result(session: Session, result: Result) -> ResultOut:
 
 @router.get("/tests/{test_id}")
 def get_test(test_id: int, session: Session = Depends(get_session),
-             _: User = Depends(current_user)):
+             user: User = Depends(current_user)):
     """A test with the case steps it was made from.
 
     The run grid used to show only a title, so a tester had to open the case
     in another tab to find out what to do. Steps come from the case; the
     latest per-step outcome comes from the most recent result.
     """
+    assert_read_of(session, user, test=test_id)
     test = session.get(Test, test_id)
     if test is None:
         raise HTTPException(404, "test bulunamadi")
@@ -448,7 +454,8 @@ def update_test(test_id: int, payload: TestPatch,
 
 @router.get("/tests/{test_id}/results", response_model=list[ResultOut])
 def list_results(test_id: int, session: Session = Depends(get_session),
-                 _: User = Depends(current_user)):
+                 user: User = Depends(current_user)):
+    assert_read_of(session, user, test=test_id)
     rows = session.scalars(
         select(Result).where(Result.test_id == test_id)
         .options(selectinload(Result.step_results))

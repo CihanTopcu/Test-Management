@@ -22,12 +22,24 @@ WINDOW = {"daily": timedelta(days=1), "weekly": timedelta(days=7)}
 
 
 def _projects_for(session: Session, subscription) -> list[Project]:
+    """The projects a digest covers, limited to what its reader may open
+    today -- not what they could open when they subscribed. An e-mail is
+    the one way out of the application that no screen checks."""
+    from .api.permissions import readable_project_ids
+
+    reader = session.get(User, subscription.user_id)
+    if reader is None or not reader.is_active:
+        return []
+    readable = readable_project_ids(session, reader)
     if subscription.project_id:
+        if readable is not None and subscription.project_id not in readable:
+            return []
         project = session.get(Project, subscription.project_id)
         return [project] if project else []
-    return list(session.scalars(
-        select(Project).where(Project.is_completed.is_(False))
-        .order_by(Project.name)))
+    query = select(Project).where(Project.is_completed.is_(False))
+    if readable is not None:
+        query = query.where(Project.id.in_(readable or [-1]))
+    return list(session.scalars(query.order_by(Project.name)))
 
 
 def _since(subscription, now: datetime) -> datetime:

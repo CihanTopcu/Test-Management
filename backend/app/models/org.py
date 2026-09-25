@@ -63,6 +63,12 @@ class Project(Base, LegacyIdMixin, TimestampMixin):
     completed_on: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # 1=single suite, 2=single+baselines, 3=multi-suite (all DGPays projects are 3)
     suite_mode: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    # TestRail's "Default Access": the role everyone without a membership of
+    # their own (or through a group) holds here. Null is "global role" --
+    # people get whatever their global role gives them, which is how every
+    # project came across. The No Access role closes the project to all but
+    # its members.
+    default_role_id: Mapped[int | None] = mapped_column(ForeignKey("roles.id"))
 
 
 class ProjectMember(Base):
@@ -75,3 +81,21 @@ class ProjectMember(Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True)
     role_id: Mapped[int | None] = mapped_column(ForeignKey("roles.id"))
+
+
+class ProjectGroup(Base):
+    """A group's role in one project.
+
+    Precedence follows TestRail: a person's own membership wins; failing
+    that, the groups they belong to count, and across several groups the
+    capabilities add up; failing that, the project's default access.
+    """
+    __tablename__ = "project_groups"
+    __table_args__ = (UniqueConstraint("project_id", "group_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)

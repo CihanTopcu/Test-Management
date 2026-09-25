@@ -13,7 +13,7 @@ from ...models import (Case, CaseStep, Notification, NotificationPreference,
                        SharedStep, Suite, User)
 from ...notifications import KINDS, send_pending
 from ..deps import current_user
-from ..permissions import WRITE_CASES, assert_can, capabilities
+from ..permissions import WRITE_CASES, assert_can, assert_read, capabilities
 
 router = APIRouter(prefix="/api", tags=["workspace"])
 
@@ -160,7 +160,8 @@ class SharedStepIn(BaseModel):
 
 @router.get("/projects/{project_id}/shared-steps")
 def list_shared_steps(project_id: int, session: Session = Depends(get_session),
-                      _: User = Depends(current_user)):
+                      user: User = Depends(current_user)):
+    assert_read(session, user, project_id)
     rows = session.scalars(
         select(SharedStep).where(SharedStep.project_id == project_id)
         .order_by(SharedStep.title)).all()
@@ -323,6 +324,8 @@ def create_subscription(payload: SubscriptionIn,
                         user: User = Depends(current_user)):
     if payload.kind not in DIGEST_KINDS:
         raise HTTPException(400, "bilinmeyen rapor turu")
+    if payload.project_id:
+        assert_read(session, user, payload.project_id)
     existing = session.scalar(
         select(ReportSubscription).where(
             ReportSubscription.user_id == user.id,

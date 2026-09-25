@@ -22,8 +22,11 @@ from ...models import (Case, CaseType, CustomField, CustomFieldOption,
                        Priority, Result, Run, Section, Suite, Test, User)
 from ..deps import current_user
 from ..schemas import DistributionOut, SeriesPoint
+from ..permissions import read_project
 
-router = APIRouter(prefix="/api/projects/{project_id}/reports", tags=["reports"])
+# every report is about one project, so one guard covers them all
+router = APIRouter(prefix="/api/projects/{project_id}/reports", tags=["reports"],
+                   dependencies=[Depends(read_project)])
 
 
 @router.get("/property-distribution", response_model=DistributionOut)
