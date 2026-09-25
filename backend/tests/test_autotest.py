@@ -421,3 +421,37 @@ def test_a_plan_can_be_run_by_hand_and_paused(app_client, admin, project, browse
     assert paused["next_run_at"] is None
     history = app_client.get(f"/api/autotest/plans/{plan['id']}/batches", headers=admin).json()
     assert [b["id"] for b in history] == [batch["id"]]
+
+
+def test_dashboard_finds_failing_and_flaky_scenarios(app_client, admin, project, db):
+    from datetime import datetime, timedelta, timezone
+    from app.models import AutoRun
+    base = f"/api/projects/{project['id']}/autotest/scenarios"
+    flaky = app_client.post(base, headers=admin, json={"name": "Oynak", "steps": "Git https://x"}).json()
+    broken = app_client.post(base, headers=admin, json={"name": "Hep kalan", "steps": "Git https://x"}).json()
+    steady = app_client.post(base, headers=admin, json={"name": "Sağlam", "steps": "Git https://x"}).json()
+    app_client.post(base, headers=admin, json={"name": "Hiç koşmamış", "steps": "Git https://x"})
+
+    now = datetime.now(timezone.utc)
+    def add(sid, statuses):
+        for i, st in enumerate(statuses):
+            at = now - timedelta(hours=len(statuses) - i)
+            db.add(AutoRun(scenario_id=sid, status=st, steps="Git https://x", created_on=at,
+                           started_on=at, finished_on=at + timedelta(seconds=4),
+                           log=[{"text": 'Gör "Tamam"', "status": "failed", "message": "yok"}]
+                           if st == "failed" else []))
+    add(flaky["id"], ["passed", "failed", "passed", "failed", "passed"])
+    add(broken["id"], ["failed", "failed", "failed"])
+    add(steady["id"], ["passed"] * 4)
+    db.commit()
+
+    d = app_client.get(f"/api/projects/{project['id']}/autotest/dashboard?days=7",
+                       headers=admin).json()
+    rows = {r["name"]: r for r in d["scenarios"]}
+    assert d["scenarios"][0]["name"] == "Hep kalan"              # worst first
+    assert rows["Oynak"]["flaky"] and not rows["Hep kalan"]["flaky"] and not rows["Sağlam"]["flaky"]
+    assert rows["Oynak"]["history"] == [1, 0, 1, 0, 1]
+    assert rows["Hep kalan"]["last_failure"]["step"] == 'Gör "Tamam"'
+    assert rows["Sağlam"]["pass_rate"] == 100 and rows["Sağlam"]["avg_seconds"] == 4
+    assert d["totals"]["runs"] >= 12 and d["totals"]["never_run"] >= 1 and d["totals"]["flaky"] >= 1
+    assert len(d["trend"]) == 7 and sum(p["total"] for p in d["trend"]) >= 12

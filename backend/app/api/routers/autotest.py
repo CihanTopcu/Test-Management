@@ -7,7 +7,7 @@ needs write_results -- the same split as cases and results.
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
@@ -748,3 +748,108 @@ def stop_batch(batch_id: int, user: User = Depends(current_user),
     session.commit()
     schedule.finish_batch(session, b.id)
     return _batch_out(session, b, runs=True)
+
+
+# --- dashboard ---------------------------------------------------------------------
+
+FLAKY_WINDOW = 10
+
+
+@router.get("/projects/{project_id}/autotest/dashboard")
+def dashboard(project_id: int, days: int = 30, user: User = Depends(current_user),
+              session: Session = Depends(get_session)):
+    """How the automation has been doing: a daily pass rate, the scenarios
+    that fail most, the ones that flip between passing and failing (flaky),
+    and how long they take."""
+    assert_read(session, user, project_id)
+    days = max(1, min(days, 180))
+    since = _now() - timedelta(days=days)
+    tz = schedule.zone()
+    scenarios = {s.id: s for s in session.scalars(
+        select(AutoScenario).where(AutoScenario.project_id == project_id))}
+    runs = session.scalars(select(AutoRun).where(
+        AutoRun.scenario_id.in_(list(scenarios) or [0]),
+        AutoRun.created_on >= since,
+        AutoRun.status.in_(("passed", "failed", "error", "stopped")))
+        .order_by(AutoRun.id)).all()
+
+    def seconds(r):
+        return ((r.finished_on - r.started_on).total_seconds()
+                if r.started_on and r.finished_on else None)
+
+    # the daily series, in local days, every day present so gaps read as gaps
+    by_day: dict[str, dict] = {}
+    for n in range(days - 1, -1, -1):
+        d = (_now().astimezone(tz) - timedelta(days=n)).date().isoformat()
+        by_day[d] = {"day": d, "passed": 0, "failed": 0, "error": 0}
+    for r in runs:
+        d = r.created_on.astimezone(tz).date().isoformat()
+        if d in by_day and r.status in ("passed", "failed", "error"):
+            by_day[d][r.status] += 1
+    trend = []
+    for row in by_day.values():
+        n = row["passed"] + row["failed"] + row["error"]
+        trend.append({**row, "total": n,
+                      "pass_rate": round(100 * row["passed"] / n, 1) if n else None})
+
+    per: dict[int, list] = {}
+    for r in runs:
+        per.setdefault(r.scenario_id, []).append(r)
+    table = []
+    for sid, rs in per.items():
+        finished = [r for r in rs if r.status in ("passed", "failed", "error")]
+        if not finished:
+            continue
+        recent = [r.status == "passed" for r in finished[-FLAKY_WINDOW:]]
+        flips = sum(1 for a, b in zip(recent, recent[1:]) if a != b)
+        passed = sum(1 for r in finished if r.status == "passed")
+        durations = [x for x in (seconds(r) for r in finished) if x is not None]
+        last_fail = next((r for r in reversed(finished) if r.status != "passed"), None)
+        failed_step = None
+        if last_fail is not None:
+            failed_step = next((x.get("text") for x in (last_fail.log or [])
+                                if x.get("status") == "failed"), None)
+        table.append({
+            "scenario_id": sid, "name": scenarios[sid].name,
+            "case_id": scenarios[sid].case_id,
+            "runs": len(finished),
+            "passed": passed,
+            "pass_rate": round(100 * passed / len(finished), 1),
+            "history": [1 if ok else 0 for ok in recent],
+            "flips": flips,
+            # both outcomes in the recent window, changing more than once
+            "flaky": flips >= 2,
+            "avg_seconds": round(sum(durations) / len(durations), 1) if durations else None,
+            "last_status": finished[-1].status, "last_run_id": finished[-1].id,
+            "last_on": finished[-1].created_on,
+            "last_failure": ({"run_id": last_fail.id, "on": last_fail.created_on,
+                              "step": failed_step,
+                              "message": next((x.get("message") for x in (last_fail.log or [])
+                                               if x.get("status") == "failed"), last_fail.message)}
+                             if last_fail else None),
+        })
+    table.sort(key=lambda t: (t["pass_rate"], -t["runs"]))
+
+    finished = [r for r in runs if r.status in ("passed", "failed", "error")]
+    durations = [x for x in (seconds(r) for r in finished) if x is not None]
+    linked = sum(1 for s in scenarios.values() if s.case_id)
+    return {
+        "days": days,
+        "totals": {
+            "scenarios": len(scenarios), "linked_to_cases": linked,
+            "runs": len(finished),
+            "passed": sum(1 for r in finished if r.status == "passed"),
+            "failed": sum(1 for r in finished if r.status == "failed"),
+            "error": sum(1 for r in finished if r.status == "error"),
+            "stopped": sum(1 for r in runs if r.status == "stopped"),
+            "pass_rate": (round(100 * sum(1 for r in finished if r.status == "passed")
+                                / len(finished), 1) if finished else None),
+            "avg_seconds": round(sum(durations) / len(durations), 1) if durations else None,
+            "flaky": sum(1 for t in table if t["flaky"]),
+            "never_run": len(set(scenarios) - set(per)),
+            "active_plans": session.scalar(select(func.count()).select_from(AutoPlan).where(
+                AutoPlan.project_id == project_id, AutoPlan.is_active.is_(True))) or 0,
+        },
+        "trend": trend,
+        "scenarios": table,
+    }

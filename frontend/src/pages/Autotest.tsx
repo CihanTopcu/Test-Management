@@ -6,6 +6,7 @@ import { Dialog } from '../components/Dialog'
 import { Icon } from '../components/Icon'
 import { href, type Route } from '../route'
 import { AutotestPlans } from './AutotestPlans'
+import { AutotestDashboard } from './AutotestDashboard'
 
 export interface RunSummary {
   id: number
@@ -592,7 +593,7 @@ export function Autotest({ route, projectName }: { route: Route; projectName: st
   const [showVars, setShowVars] = useState(false)
   const [varsVersion, setVarsVersion] = useState(0)
 
-  const tab = route.filters?.tab === 'plans' ? 'plans' : 'scenarios'
+  const tab = route.filters?.tab === 'plans' ? 'plans' : route.filters?.tab === 'dashboard' ? 'dashboard' : 'scenarios'
   const planId = route.filters?.plan ? Number(route.filters.plan) : undefined
   const selected = scenarios.find((s) => s.id === route.scenario) ?? null
   const shown = useMemo(() => {
@@ -624,11 +625,15 @@ export function Autotest({ route, projectName }: { route: Route; projectName: st
                   onClick={() => openPlan(undefined)}>
             <Icon name="clock" size={13} /> Planlar
           </button>
+          <button role="tab" aria-selected={tab === 'dashboard'} className={tab === 'dashboard' ? 'on' : ''}
+                  onClick={() => { location.hash = href({ page: 'autotest', project: projectId, filters: { tab: 'dashboard' } }) }}>
+            <Icon name="chart" size={13} /> Pano
+          </button>
         </div>
         <button className="ghost right" onClick={() => setShowVars(true)}>
           <Icon name="key" size={14} /> Değişkenler
         </button>
-        {tab === 'scenarios' ? (
+        {tab === 'dashboard' ? null : tab === 'scenarios' ? (
           <button className="primary" onClick={() => { open(undefined); setCreating(true) }}>
             <Icon name="plus" size={14} /> Yeni senaryo
           </button>
@@ -643,7 +648,9 @@ export function Autotest({ route, projectName }: { route: Route; projectName: st
                        onClose={() => setShowVars(false)}
                        onChanged={() => setVarsVersion((v) => v + 1)} />
 
-      {tab === 'plans' ? (
+      {tab === 'dashboard' ? (
+        <AutotestDashboard projectId={projectId} />
+      ) : tab === 'plans' ? (
         <AutotestPlans projectId={projectId} selected={planId} onSelect={openPlan}
                        creating={creating} scenarios={scenarios} />
       ) : (

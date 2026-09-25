@@ -1656,3 +1656,13 @@ tr.detail-row:hover { background: none; }
 .batchrow-body { padding: 4px 8px 12px 28px; }
 .batchruns li { display: flex; align-items: center; gap: 10px; padding: 3px 0; min-width: 0; }
 @media (max-width: 900px) { .plangrid { grid-template-columns: 1fr; } }
+
+.autotiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.autotile { padding: 12px 14px; }
+.autotile-value { font-family: var(--display); font-size: 26px; font-weight: 600; margin: 4px 0 2px; }
+.autotile-value.good { color: var(--passed); }
+.autotile-value.bad { color: var(--failed); }
+.histstrip { display: inline-flex; gap: 3px; align-items: center; }
+.histstrip span { width: 10px; height: 16px; border-radius: 3px; }
+.histstrip .ok { background: var(--passed); }
+.histstrip .bad { background: var(--failed); }
